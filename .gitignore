@@ -162,4 +162,5 @@ cython_debug/
 #.idea/
 
 secrets/*
-output/*
+metadata/*
+files/*
