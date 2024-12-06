@@ -13,7 +13,7 @@ from GDrive import GDrive
 from Compressor import Compressor
 
 MAX_DOWNLOAD_THREADS = int(os.getenv("MAX_DOWNLOAD_THREADS", 10))
-MAX_DRIVE_PROCESSES = int(os.getenv("MAX_DRIVE_PROCESSES", cpu_count()))
+MAX_DRIVE_PROCESSES = int(os.getenv("MAX_DRIVE_PROCESSES", 4))
 COMPRESSION_ALGORITHM = os.getenv("COMPRESSION_ALGORITHM", "pigz")
 COMPRESSION_PROCESSES = int(os.getenv("COMPRESSION_PROCESSES", cpu_count()))
 
