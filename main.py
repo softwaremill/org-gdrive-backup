@@ -10,11 +10,12 @@ from google.oauth2.service_account import Credentials
 
 from GAdmin import GAdmin
 from GDrive import GDrive
+from Compressor import Compressor
 
 MAX_DOWNLOAD_THREADS = int(os.getenv("MAX_DOWNLOAD_THREADS", 10))
 MAX_DRIVE_PROCESSES = int(os.getenv("MAX_DRIVE_PROCESSES", cpu_count()))
 COMPRESSION_ALGORITHM = os.getenv("COMPRESSION_ALGORITHM", "pigz")
-PIGZ_COMPRESSION_PROCESSES = int(os.getenv("COMPRESSION_PROCESSES", cpu_count()))
+COMPRESSION_PROCESSES = int(os.getenv("COMPRESSION_PROCESSES", cpu_count()))
 
 SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE", "service-account-key.json")
 SCOPES = ["https://www.googleapis.com/auth/admin.directory.user.readonly", 
@@ -30,28 +31,8 @@ random.seed(time.time())
 def get_credentials(subject):
     return Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES).with_subject(subject)
 
-def compress_drive(drive_id, algorithm="lz4"):
-    print(f"Compressing {drive_id} with {algorithm}")
-    start_time = time.time()
-    original_size = os.path.getsize(f"files/{drive_id}")
-
-    match algorithm:
-        case "lz4":
-            tar_path = f"files/{drive_id}.tar.lz4"
-            success = os.system(f"tar c - -C files {drive_id} | lz4 - {tar_path}")
-        case "pigz":
-            tar_path = f"files/{drive_id}.tar.gz"
-            success = os.system(f"tar cf - -C files {drive_id} | pigz -p {PIGZ_COMPRESSION_PROCESSES} > {tar_path}")
-        case _:
-            raise NotImplementedError(f"Compression algorithm {algorithm} not implemented")
-        
-    shutil.rmtree(f"files/{drive_id}")
-        
-    print(f"Compression finished in {time.time() - start_time:.2f}s")
-    compressed_size = os.path.getsize(tar_path)
-    print(f"Compression ratio: {original_size / compressed_size:.2f}")
-
 def process_drive(drive: GDrive):
+    start_time = time.time()
     drive_id = drive.get_drive_id()
 
     logger.info(f"({drive_id}) Processing drive")
@@ -64,6 +45,12 @@ def process_drive(drive: GDrive):
     logger.info(f"({drive_id}) Downloading files")
     drive.download_all_files(f"files/{drive_id}")
     logger.info(f"({drive_id}) Files downloaded")
+
+    if COMPRESS_DRIVES and len(drive.get_file_list()) > 0:
+        compressor = Compressor(COMPRESSION_ALGORITHM, delete_original=True, max_processes=COMPRESSION_PROCESSES)
+        compressor.compress_folder(f"files/{drive_id}")
+
+    logger.info(f"({drive_id}) Drive processed in {time.time() - start_time:.2f}s")
 
 
 def main():

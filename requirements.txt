@@ -9,8 +9,8 @@ google-auth-oauthlib==1.2.1
 googleapis-common-protos==1.66.0
 httplib2==0.22.0
 idna==3.10
+loguru==0.7.3
 oauthlib==3.2.2
-pgzip==0.3.5
 proto-plus==1.25.0
 protobuf==5.29.1
 pyasn1==0.6.1

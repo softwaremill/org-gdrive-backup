@@ -42,6 +42,7 @@ This project is a simple Python script that backs up all Google Drives in a Goog
 | `MAX_DOWNLOAD_THREADS`     | No       | How many threads (**per single drive**) are used to download files         | int    | `5`                        |
 | `MAX_DRIVE_PROCESSES`      | No       | Each drive gets it's own process. This specifies how many drives can be handled concurrently. | int    | `cpu_count()`              |
 | `COMPRESS_DRIVES`          | No       | Compress the exported drives to a .zip file                                | bool   | `false`                   |
+| `COMPRESSION_PROCESSES`    | No       | How many processes are used to compress the drives (if supported by algorithm) | int    | `cpu_count()`              |
 
 
 # Roadmap
