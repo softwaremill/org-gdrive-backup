@@ -12,16 +12,16 @@ from googleapiclient.errors import HttpError
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-MAX_QUERY_THREADS = int(os.getenv("MAX_QUERY_THREADS")) or 10
-MAX_DOWNLOAD_PROCESSES = int(os.getenv("MAX_DOWNLOAD_PROCESSES")) or cpu_count()
-FILES_PER_DOWNLOAD_BATCH = int(os.getenv("FILES_PER_DOWNLOAD_BATCH")) or 1
+MAX_QUERY_THREADS = int(os.getenv("MAX_QUERY_THREADS", 5))
+MAX_DOWNLOAD_PROCESSES = int(os.getenv("MAX_DOWNLOAD_PROCESSES", cpu_count()))
+FILES_PER_DOWNLOAD_BATCH = int(os.getenv("FILES_PER_DOWNLOAD_BATCH", 1))
 
-SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE") or "secrets/sandbox-service-account-key.json"
+SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE", "service-account-key.json")
 SCOPES = ["https://www.googleapis.com/auth/admin.directory.user.readonly", 
           "https://www.googleapis.com/auth/drive.metadata.readonly",
           "https://www.googleapis.com/auth/drive.readonly"]
-DELEGATED_ADMIN_EMAIL = os.getenv("DELEGATED_ADMIN_EMAIL") or "xxx"
-WORKSPACE_CUSTOMER_ID = os.getenv("WORKSPACE_CUSTOMER_ID") or "xxx"
+DELEGATED_ADMIN_EMAIL = os.getenv("DELEGATED_ADMIN_EMAIL", "xxx")
+WORKSPACE_CUSTOMER_ID = os.getenv("WORKSPACE_CUSTOMER_ID", "xxx")
 random.seed(time.time())
 
 

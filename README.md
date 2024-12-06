@@ -10,7 +10,7 @@ This project is a simple Python script that backs up all Google Drives in a Goog
 - Saves metadata about the files to a JSON file (currently md5Checksum)
 - Links are converted to .txt files with path to the original file
 
-# Configuration
+# Usage
 
 ## GCP Project
 
@@ -30,12 +30,29 @@ This project is a simple Python script that backs up all Google Drives in a Goog
    - `https://www.googleapis.com/auth/admin.directory.user.readonly`
    - `https://www.googleapis.com/auth/drive.readonly`
 
+4. Obtain the `Customer ID` of your Google Workspace domain. This can be found in the Google Admin Console under `Account` -> `Account Settings`
+
+## Enviroment variables
+
+| Name                     | Required | Purpose                                                                    | Type   | Default                  |   |
+|--------------------------|----------|----------------------------------------------------------------------------|--------|--------------------------|---|
+| DELEGATED_ADMIN_EMAIL    | Yes      | E-mail address of the superadmin account                                   | string |                          |   |
+| WORKSPACE_CUSTOMER_ID    | Yes      | Customer ID from Google Admin Console                                      | string |                          |   |
+| SERVICE_ACCOUNT_FILE     | Yes      | Path to service account .json key                                          | string | service-account-key.json |   |
+| MAX_QUERY_THREADS        | No       | Number of threads used to list files (always one thread per Google Drive)  | int    | 5                        |   |
+| MAX_DOWNLOAD_PROCESSES   | No       | Number of max processes used to download files from Google Drive           | int    | cpu_count()              |   |
+| FILES_PER_DOWNLOAD_BATCH | No       | How many files should a process download                                   | int    | 1                        |   |
+|                          |          |                                                                            |        |                          |   |
+|                          |          |                                                                            |        |                          |   |
+|                          |          |                                                                            |        |                          |   |
+
 # Roadmap
 
 - [ ] (Configurable) compression
 - [ ] Configurable export formats
 - [ ] Configurable metadata fields
 - [ ] Configurable links behaviour
+- [ ] Workload Identity support
 
 # Good to know
 
