@@ -34,17 +34,15 @@ This project is a simple Python script that backs up all Google Drives in a Goog
 
 ## Enviroment variables
 
-| Name                     | Required | Purpose                                                                    | Type   | Default                  |   |
-|--------------------------|----------|----------------------------------------------------------------------------|--------|--------------------------|---|
-| DELEGATED_ADMIN_EMAIL    | Yes      | E-mail address of the superadmin account                                   | string |                          |   |
-| WORKSPACE_CUSTOMER_ID    | Yes      | Customer ID from Google Admin Console                                      | string |                          |   |
-| SERVICE_ACCOUNT_FILE     | Yes      | Path to service account .json key                                          | string | service-account-key.json |   |
-| MAX_QUERY_THREADS        | No       | Number of threads used to list files (always one thread per Google Drive)  | int    | 5                        |   |
-| MAX_DOWNLOAD_PROCESSES   | No       | Number of max processes used to download files from Google Drive           | int    | cpu_count()              |   |
-| FILES_PER_DOWNLOAD_BATCH | No       | How many files should a process download                                   | int    | 1                        |   |
-|                          |          |                                                                            |        |                          |   |
-|                          |          |                                                                            |        |                          |   |
-|                          |          |                                                                            |        |                          |   |
+| Name                     | Required | Purpose                                                                    | Type   | Default                  |
+|--------------------------|----------|----------------------------------------------------------------------------|--------|--------------------------|
+| `DELEGATED_ADMIN_EMAIL`    | Yes      | E-mail address of the superadmin account                                   | string |                          |
+| `WORKSPACE_CUSTOMER_ID`    | Yes      | Customer ID from Google Admin Console                                      | string |                          |
+| `SERVICE_ACCOUNT_FILE`     | Yes      | Path to service account .json key                                          | string | service-account-key.json |
+| `MAX_QUERY_THREADS`        | No       | Number of threads used to list files (always one thread per Google Drive)  | int    | 5                        |
+| `MAX_DOWNLOAD_PROCESSES`   | No       | Number of max processes used to download files from Google Drive           | int    | cpu_count()              |
+| `FILES_PER_DOWNLOAD_BATCH` | No       | How many files should a process download                                   | int    | 1                        |
+
 
 # Roadmap
 
