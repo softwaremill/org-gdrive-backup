@@ -13,17 +13,17 @@ import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 MAX_QUERY_THREADS = 10
-MAX_DOWNLOAD_PROCESSES = cpu_count() * 3
+MAX_DOWNLOAD_PROCESSES = 20
 FILES_PER_DOWNLOAD_BATCH = 1
 
-SERVICE_ACCOUNT_FILE = "secrets/sandbox-service-account-key.json"
+SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE") or "secrets/sandbox-service-account-key.json"
 SCOPES = ["https://www.googleapis.com/auth/admin.directory.user.readonly", 
           "https://www.googleapis.com/auth/drive.metadata.readonly",
           "https://www.googleapis.com/auth/drive.readonly"]
-DELEGATED_ADMIN_EMAIL = "xxx"
-WORKSPACE_CUSTOMER_ID = "xxx"
-
+DELEGATED_ADMIN_EMAIL = os.getenv("DELEGATED_ADMIN_EMAIL") or "xxx"
+WORKSPACE_CUSTOMER_ID = os.getenv("WORKSPACE_CUSTOMER_ID") or "xxx"
 random.seed(time.time())
+
 
 
 def get_credentials(subject):
@@ -48,7 +48,7 @@ def get_files(drive_service, drive_id=None):
 
 def get_files_user(drive_service):
     files = []
-    request = drive_service.files().list(pageSize=100, fields="nextPageToken, files(id, name, md5Checksum, parents, mimeType, permissions)")
+    request = drive_service.files().list(pageSize=100, fields="nextPageToken, files(id, name, md5Checksum, parents, mimeType, shortcutDetails, permissions)")
     while request is not None:
         response = request.execute()
         files.extend(response.get("files", []))
@@ -58,7 +58,7 @@ def get_files_user(drive_service):
 def get_files_shared(drive_service, drive_id):
     files = []
     known_permissions = {}
-    request = drive_service.files().list(pageSize=100, fields="nextPageToken, files(id, name, md5Checksum, parents, mimeType, permissionIds)", corpora="drive", driveId=drive_id, includeItemsFromAllDrives=True, supportsAllDrives=True)
+    request = drive_service.files().list(pageSize=100, fields="nextPageToken, files(id, name, md5Checksum, parents, mimeType, shortcutDetails, permissionIds)", corpora="drive", driveId=drive_id, includeItemsFromAllDrives=True, supportsAllDrives=True)
     while request is not None:
         response = request.execute()
         files.extend(response.get("files", []))
@@ -75,17 +75,24 @@ def get_files_shared(drive_service, drive_id):
                     known_permissions[permission_id] = permission
     return files
 
-def get_file_path(drive_service, file_id):
+def get_file_path(drive_service, file_id, supportsAllDrives=False):
     file_path = []
     print(f"Processing file {file_id}")
 
-    file = drive_service.files().get(fileId=file_id, fields="name, parents").execute()
+    file = drive_service.files().get(fileId=file_id, fields="name, parents", supportsAllDrives=supportsAllDrives).execute()
     file_path.append(file['name'])
 
     parents = file.get('parents', [])
+    print(f"Parents: {parents}")
     while parents:
         parent_id = parents[0]
-        parent = drive_service.files().get(fileId=parent_id, fields="name, parents").execute()
+        parent = drive_service.files().get(fileId=parent_id, fields="name, parents", supportsAllDrives=supportsAllDrives).execute()
+        #check if parent is a shared drive
+        if "parents" not in parent:
+            # get shared drive name
+            drive = drive_service.drives().get(driveId=parent_id).execute()
+            file_path.append(drive['name'])
+            break
         file_path.append(parent['name'])
         parents = parent.get('parents', [])
 
@@ -153,35 +160,61 @@ def get_shared_drives(admin_creds):
         drives.extend(response.get("drives", []))
         request = service.drives().list_next(request, response)
     return drives
+    
 
-def download_user_drive_file(file, user_email, credentials, drive_service):
-    drive_service = build("drive", "v3", credentials=credentials)
-    if file["mimeType"] == "application/vnd.google-apps.folder":
-        return
-    request = drive_service.files().get_media(fileId=file['id'])
-    os.makedirs(f"files/{user_email}/{file['path']}", exist_ok=True)
-    with open(f"files/{user_email}/{file['path']}/{file['name']}", "wb") as f:
-        f.write(request.execute())
-
-def download_shared_drive_file(file, drive_id, credentials, drive_service):
-    if file["mimeType"] == "application/vnd.google-apps.folder":
-        return
+def download_drive_file(file, drive_id, drive_service):
     request = drive_service.files().get_media(fileId=file['id'])
     os.makedirs(f"files/{drive_id}/{file['path']}", exist_ok=True)
     with open(f"files/{drive_id}/{file['path']}/{file['name']}", "wb") as f:
         f.write(request.execute())
 
-def process_user_file(args):
-    batch, user_name, credentials = args
-    drive_service = build("drive", "v3", credentials=credentials)
-    for file in batch:
-        download_user_drive_file(file, user_name, credentials, drive_service)
+def export_drive_file(file, drive_id, drive_service):
+    if file['mimeType'] == "application/vnd.google-apps.folder":
+        return
+    
+    match file['mimeType']:
+        case "application/vnd.google-apps.shortcut":
+            original_file = file['shortcutDetails']['targetId']
+            original_file_path = get_file_path(drive_service, original_file, supportsAllDrives=True)
+            with open(f"files/{drive_id}/{file['path']}/{file['name']}.lnk.txt", "w") as f:
+                f.write(original_file_path)
+        case "application/vnd.google-apps.document":
+            request = drive_service.files().export_media(fileId=file['id'], mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+            os.makedirs(f"files/{drive_id}/{file['path']}", exist_ok=True)
+            with open(f"files/{drive_id}/{file['path']}/{file['name']}.docx", "wb") as f:
+                f.write(request.execute())
+        case "application/vnd.google-apps.spreadsheet":
+            request = drive_service.files().export_media(fileId=file['id'], mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            os.makedirs(f"files/{drive_id}/{file['path']}", exist_ok=True)
+            with open(f"files/{drive_id}/{file['path']}/{file['name']}.xlsx", "wb") as f:
+                f.write(request.execute())
+        case "application/vnd.google-apps.presentation":
+            request = drive_service.files().export_media(fileId=file['id'], mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation")
+            os.makedirs(f"files/{drive_id}/{file['path']}", exist_ok=True)
+            with open(f"files/{drive_id}/{file['path']}/{file['name']}.pptx", "wb") as f:
+                f.write(request.execute())
+        case "application/vnd.google-apps.drawing":
+            request = drive_service.files().export_media(fileId=file['id'], mimeType="application/pdf")
+            os.makedirs(f"files/{drive_id}/{file['path']}", exist_ok=True)
+            with open(f"files/{drive_id}/{file['path']}/{file['name']}.pdf", "wb") as f:
+                f.write(request.execute())
+        case "application/vnd.google-apps.script":
+            request = drive_service.files().export_media(fileId=file['id'], mimeType="application/vnd.google-apps.script+json")
+            os.makedirs(f"files/{drive_id}/{file['path']}", exist_ok=True)
+            with open(f"files/{drive_id}/{file['path']}/{file['name']}.json", "wb") as f:
+                f.write(request.execute())
+        case _:
+            with open(f"files/{drive_id}/errors.txt", "a") as f:
+                f.write(f"Unknown file type: {file['mimeType']} ({file['id']})\n")
 
-def process_shared_file(args):
+def process_file(args):
     batch, drive_id, credentials = args
     drive_service = build("drive", "v3", credentials=credentials)
     for file in batch:
-        download_shared_drive_file(file, drive_id, credentials, drive_service)
+        if 'md5Checksum' in file: # check if file is binary
+            download_drive_file(file, drive_id, drive_service)
+        else:
+            export_drive_file(file, drive_id, drive_service)
 
 def chunkify(lst, n):
     for i in range(0, len(lst), n):
@@ -201,7 +234,7 @@ def download():
             with Pool(processes=MAX_DOWNLOAD_PROCESSES) as pool:
                 args = [(batch, user_name, credentials) for batch in chunkify(files, FILES_PER_DOWNLOAD_BATCH)]
                 with tqdm(total=len(files), desc=f"Downloading files for {user_name}") as pbar:
-                    for _ in pool.imap_unordered(process_user_file, args):
+                    for _ in pool.imap_unordered(process_file, args):
                         pbar.update(FILES_PER_DOWNLOAD_BATCH)
 
         elif drive.startswith("s_"):
@@ -210,7 +243,7 @@ def download():
             with Pool(processes=MAX_DOWNLOAD_PROCESSES) as pool:
                 args = [(batch, drive_id, credentials) for batch in chunkify(files, FILES_PER_DOWNLOAD_BATCH)]
                 with tqdm(total=len(files), desc=f"Downloading files for {drive_id}") as pbar:
-                    for _ in pool.imap_unordered(process_shared_file, args):
+                    for _ in pool.imap_unordered(process_file, args):
                         pbar.update(FILES_PER_DOWNLOAD_BATCH)
 
 
