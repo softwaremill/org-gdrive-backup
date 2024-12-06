@@ -39,15 +39,14 @@ This project is a simple Python script that backs up all Google Drives in a Goog
 | `DELEGATED_ADMIN_EMAIL`    | Yes      | E-mail address of the superadmin account                                   | string |                            |
 | `WORKSPACE_CUSTOMER_ID`    | Yes      | Customer ID from Google Admin Console                                      | string |                            |
 | `SERVICE_ACCOUNT_FILE`     | Yes      | Path to service account .json key                                          | string | `service-account-key.json` |
-| `MAX_QUERY_THREADS`        | No       | Number of threads used to list files (always one thread per Google Drive)  | int    | `5`                        |
-| `MAX_DOWNLOAD_PROCESSES`   | No       | Number of max processes used to download files from Google Drive           | int    | `cpu_count()`              |
-| `FILES_PER_DOWNLOAD_BATCH` | No       | How many files should a process download                                   | int    | `1`                        |
-| `COMPRESS_DRIVES`          | No       | Compress the exported drives to a .zip file                                 | bool   | `false`                   |
+| `MAX_DOWNLOAD_THREADS`     | No       | How many threads (**per single drive**) are used to download files         | int    | `5`                        |
+| `MAX_DRIVE_PROCESSES`      | No       | Each drive gets it's own process. This specifies how many drives can be handled concurrently. | int    | `cpu_count()`              |
+| `COMPRESS_DRIVES`          | No       | Compress the exported drives to a .zip file                                | bool   | `false`                   |
 
 
 # Roadmap
 
-- [x] File compression
+- [ ] File compression
 - [ ] Configurable algorithm for file compression
 - [ ] Configurable export formats
 - [ ] Configurable metadata fields
