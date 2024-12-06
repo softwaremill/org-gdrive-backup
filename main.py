@@ -12,9 +12,9 @@ from googleapiclient.errors import HttpError
 import json
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
-MAX_QUERY_THREADS = 10
-MAX_DOWNLOAD_PROCESSES = 20
-FILES_PER_DOWNLOAD_BATCH = 1
+MAX_QUERY_THREADS = os.getenv("MAX_QUERY_THREADS") or 10
+MAX_DOWNLOAD_PROCESSES = os.getenv("MAX_DOWNLOAD_PROCESSES") or cpu_count()
+FILES_PER_DOWNLOAD_BATCH = os.getenv("FILES_PER_DOWNLOAD_BATCH") or 1
 
 SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE") or "secrets/sandbox-service-account-key.json"
 SCOPES = ["https://www.googleapis.com/auth/admin.directory.user.readonly", 
@@ -211,10 +211,14 @@ def process_file(args):
     batch, drive_id, credentials = args
     drive_service = build("drive", "v3", credentials=credentials)
     for file in batch:
-        if 'md5Checksum' in file: # check if file is binary
-            download_drive_file(file, drive_id, drive_service)
-        else:
-            export_drive_file(file, drive_id, drive_service)
+        try:
+            if 'md5Checksum' in file: # check if file is binary
+                download_drive_file(file, drive_id, drive_service)
+            else:
+                export_drive_file(file, drive_id, drive_service)
+        except Exception as e:
+            with open(f"files/{drive_id}/errors.txt", "a") as f:
+                f.write(f"Error processing file {file['id']}: {str(e)}\n")
 
 def chunkify(lst, n):
     for i in range(0, len(lst), n):
