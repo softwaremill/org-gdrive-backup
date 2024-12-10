@@ -164,6 +164,7 @@ cython_debug/
 secrets/*
 metadata/*
 files/*
+downloads/*
 service-account-key.json
 
 .vscode/*

@@ -2,7 +2,7 @@ from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
-from loguru import logger
+from logger import app_logger as logger
 
 
 from typing import Literal

@@ -1,6 +1,4 @@
-from loguru import logger
 import os
-import time
 import shutil
 
 class Compressor:
@@ -12,8 +10,6 @@ class Compressor:
     def compress_folder(self, path):
         if not os.path.isdir(path):
             raise ValueError(f"{path} is not a directory")
-        logger.info(f"Compressing {path} with {self.algorithm}")
-        start_time = time.time()
         
         path_parts = path.split("/")
         file_name = path_parts[-1]
@@ -22,14 +18,15 @@ class Compressor:
         match self.algorithm:
             case "lz4":
                 tar_path = f"{directory}/{file_name}.tar.lz4"
-                success = os.system(f"tar c - -C {directory} {file_name} | lz4 - {tar_path}")
+                exit_code = os.system(f"tar c - -C {directory} {file_name} | lz4 - {tar_path}")
             case "pigz":
                 tar_path = f"{directory}/{file_name}.tar.gz"
-                success = os.system(f"tar cf - -C {directory} {file_name} | pigz -p {self.max_processes} > {tar_path}")
+                exit_code = os.system(f"tar cf - -C {directory} {file_name} | pigz -p {self.max_processes} > {tar_path}")
             case _:
                 raise NotImplementedError(f"Compression algorithm {self.algorithm} not implemented")
+        
+        if exit_code != 0:
+            raise RuntimeError(f"Compression failed with exit code {exit_code}")
             
         if self.delete_original:
             shutil.rmtree(path)
-
-        logger.info(f"Compressing {path} with {self.algorithm} took {time.time() - start_time:.2f}s")
