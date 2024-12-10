@@ -53,8 +53,16 @@ def process_drive(drive: GDrive):
 
     logger.info(f"({drive_id}) Drive processed in {time.time() - start_time:.2f}s")
 
+def validate_env():
+    if DELEGATED_ADMIN_EMAIL == "":
+        raise ValueError("DELEGATED_ADMIN_EMAIL is not set")
+    if WORKSPACE_CUSTOMER_ID == "":
+        raise ValueError("WORKSPACE_CUSTOMER_ID is not set")
+
 
 def main():
+
+    validate_env()
 
     admin_credentials = get_credentials(DELEGATED_ADMIN_EMAIL)
     gadmin = GAdmin(WORKSPACE_CUSTOMER_ID, admin_credentials)

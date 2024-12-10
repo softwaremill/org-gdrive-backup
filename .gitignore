@@ -165,3 +165,7 @@ secrets/*
 metadata/*
 files/*
 service-account-key.json
+
+.vscode/*
+
+.DS_Store
