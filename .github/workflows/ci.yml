@@ -1,7 +1,6 @@
 env:
   PROJECT_ID: sml-gke-iac
   ARTIFACT_REGISTRY: europe-west2-docker.pkg.dev
-  SERVICE_ACCOUNT_JSON: ${{ secrets.GCP_SA_KEY }}
 
 on:
   push:
@@ -20,7 +19,7 @@ jobs:
       - id: 'auth'
         uses: 'google-github-actions/auth@v2'
         with:
-          credentials_json: '${{ secrets.SERVICE_ACCOUNT_JSON }}'
+          credentials_json: '${{ secrets.GCP_SA_KEY }}'
       - name: 'Set up Cloud SDK'
         uses: 'google-github-actions/setup-gcloud@v2'
       - name: Build container
