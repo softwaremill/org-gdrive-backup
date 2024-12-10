@@ -58,8 +58,8 @@ def process_drive(args):
         logger.info(f"({drive_id}) Compressing files")
         compress_time_start = time.time()
         compressor = Compressor(COMPRESSION_ALGORITHM, delete_original=True, max_processes=COMPRESSION_PROCESSES)
-        compressor.compress_folder(files_path)
-        logger.info(f"({drive_id}) Files compressed in {time.time() - compress_time_start:.2f}s")
+        _, tar_size = compressor.compress_folder(files_path)
+        logger.info(f"({drive_id}) Files compressed in {time.time() - compress_time_start:.2f}s ({tar_size/1024/1024:.2f}MB)")
 
     if len(drive.get_file_list()) == 0:
         logger.warning(f"({drive_id}) No files found, skipping upload")

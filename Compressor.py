@@ -24,9 +24,13 @@ class Compressor:
                 exit_code = os.system(f"tar cf - -C {directory} {file_name} | pigz -p {self.max_processes} > {tar_path}")
             case _:
                 raise NotImplementedError(f"Compression algorithm {self.algorithm} not implemented")
+            
+        tar_size = os.path.getsize(tar_path)
         
         if exit_code != 0:
             raise RuntimeError(f"Compression failed with exit code {exit_code}")
             
         if self.delete_original:
             shutil.rmtree(path)
+
+        return tar_path, tar_size
