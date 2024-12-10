@@ -23,8 +23,8 @@ SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE", "service-account-key.js
 SCOPES = ["https://www.googleapis.com/auth/admin.directory.user.readonly", 
           "https://www.googleapis.com/auth/drive.metadata.readonly",
           "https://www.googleapis.com/auth/drive.readonly"]
-DELEGATED_ADMIN_EMAIL = os.getenv("DELEGATED_ADMIN_EMAIL", "xxx")
-WORKSPACE_CUSTOMER_ID = os.getenv("WORKSPACE_CUSTOMER_ID", "xxx")
+DELEGATED_ADMIN_EMAIL = os.getenv("DELEGATED_ADMIN_EMAIL")
+WORKSPACE_CUSTOMER_ID = os.getenv("WORKSPACE_CUSTOMER_ID")
 
 random.seed(time.time())
 
