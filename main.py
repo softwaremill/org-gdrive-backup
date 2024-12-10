@@ -3,6 +3,7 @@ import random
 import time
 from multiprocessing import Pool, cpu_count
 from logger import app_logger as logger
+import threading
 
 from google.oauth2.service_account import Credentials
 
@@ -36,6 +37,7 @@ def get_credentials(subject):
     return Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES).with_subject(subject)
 
 def process_drive(args):
+    current_task = "DOWNLOADING"
     drive, current_timestamp = args
     start_time = time.time()
     drive_id = drive.get_drive_id()
@@ -43,34 +45,53 @@ def process_drive(args):
     metadata_path = f"{downloads_path}/files.json"
     files_path = f"{downloads_path}/files"
 
-    logger.info(f"({drive_id}) Processing drive")
-    
-    drive.fetch_file_list()
-    logger.debug(f"({drive_id}) Files found: {drive.get_file_list_length()}")
-    drive.dump_file_list(metadata_path)
-    logger.info(f"({drive_id}) File list saved to {metadata_path}")
-    
-    logger.info(f"({drive_id}) Downloading files")
-    drive.download_all_files(files_path, threads=MAX_DOWNLOAD_THREADS)
-    logger.info(f"({drive_id}) Files downloaded")
+    def print_status():
+        counter = 0
+        while not stop_event.is_set():
+            time.sleep(1)
+            counter += 1
+            if counter % 60 == 0 and current_task != "DONE":
+                logger.info(f"({drive_id}) Current status: {current_task}. Files found: {drive.get_file_list_length()}. Time elapsed: {time.time() - start_time:.2f}s")
 
-    if COMPRESS_DRIVES and len(drive.get_file_list()) > 0:
-        logger.info(f"({drive_id}) Compressing files")
-        compress_time_start = time.time()
-        compressor = Compressor(COMPRESSION_ALGORITHM, delete_original=True, max_processes=COMPRESSION_PROCESSES)
-        _, tar_size = compressor.compress_folder(files_path)
-        logger.info(f"({drive_id}) Files compressed in {time.time() - compress_time_start:.2f}s ({tar_size/1024/1024:.2f}MB)")
+    stop_event = threading.Event()
+    status_thread = threading.Thread(target=print_status, daemon=True)
+    status_thread.start()
 
-    if len(drive.get_file_list()) == 0:
-        logger.warning(f"({drive_id}) No files found, skipping upload")
-    else:
-        s3 = S3(S3_BUCKET_NAME, S3_ACCESS_KEY, S3_SECRET_KEY)
-        logger.info(f"({drive_id}) Uploading files to S3")
-        upload_time_start = time.time()
-        s3.upload_folder(downloads_path, f"{current_timestamp}/{drive_id}")
-        logger.info(f"({drive_id}) Files uploaded in {time.time() - upload_time_start:.2f}s")
+    try:
+        logger.info(f"({drive_id}) Processing drive")
+        
+        drive.fetch_file_list()
+        logger.debug(f"({drive_id}) Files found: {drive.get_file_list_length()}")
+        drive.dump_file_list(metadata_path)
+        logger.info(f"({drive_id}) File list saved to {metadata_path}")
+        
+        logger.info(f"({drive_id}) Downloading files")
+        drive.download_all_files(files_path, threads=MAX_DOWNLOAD_THREADS)
+        logger.info(f"({drive_id}) Files downloaded")
 
-    logger.info(f"({drive_id}) Drive processed in {time.time() - start_time:.2f}s ({drive.get_file_list_length()} files)")
+        if COMPRESS_DRIVES and len(drive.get_file_list()) > 0:
+            current_task = "COMPRESSING"
+            logger.info(f"({drive_id}) Compressing files")
+            compress_time_start = time.time()
+            compressor = Compressor(COMPRESSION_ALGORITHM, delete_original=True, max_processes=COMPRESSION_PROCESSES)
+            _, tar_size = compressor.compress_folder(files_path)
+            logger.info(f"({drive_id}) Files compressed in {time.time() - compress_time_start:.2f}s ({tar_size/1024/1024:.2f}MB)")
+
+        if len(drive.get_file_list()) == 0:
+            logger.warning(f"({drive_id}) No files found, skipping upload")
+        else:
+            current_task = "UPLOADING"
+            s3 = S3(S3_BUCKET_NAME, S3_ACCESS_KEY, S3_SECRET_KEY)
+            logger.info(f"({drive_id}) Uploading files to S3")
+            upload_time_start = time.time()
+            s3.upload_folder(downloads_path, f"{current_timestamp}/{drive_id}")
+            logger.info(f"({drive_id}) Files uploaded in {time.time() - upload_time_start:.2f}s")
+
+        logger.info(f"({drive_id}) Drive processed in {time.time() - start_time:.2f}s ({drive.get_file_list_length()} files)")
+        current_task = "DONE"
+    finally:
+        stop_event.set()
+        status_thread.join()
 
 def validate_env():
     if DELEGATED_ADMIN_EMAIL == "" or DELEGATED_ADMIN_EMAIL is None:
