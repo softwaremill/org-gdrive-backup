@@ -14,8 +14,10 @@ from Compressor import Compressor
 
 MAX_DOWNLOAD_THREADS = int(os.getenv("MAX_DOWNLOAD_THREADS", 10))
 MAX_DRIVE_PROCESSES = int(os.getenv("MAX_DRIVE_PROCESSES", 4))
+COMPRESS_DRIVES = os.getenv("COMPRESS_DRIVES", "false").lower() == "true"
 COMPRESSION_ALGORITHM = os.getenv("COMPRESSION_ALGORITHM", "pigz")
 COMPRESSION_PROCESSES = int(os.getenv("COMPRESSION_PROCESSES", cpu_count()))
+DRIVE_WHITELIST = os.getenv("DRIVE_WHITELIST", "").split(",")
 
 SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE", "service-account-key.json")
 SCOPES = ["https://www.googleapis.com/auth/admin.directory.user.readonly", 
@@ -23,7 +25,6 @@ SCOPES = ["https://www.googleapis.com/auth/admin.directory.user.readonly",
           "https://www.googleapis.com/auth/drive.readonly"]
 DELEGATED_ADMIN_EMAIL = os.getenv("DELEGATED_ADMIN_EMAIL", "xxx")
 WORKSPACE_CUSTOMER_ID = os.getenv("WORKSPACE_CUSTOMER_ID", "xxx")
-COMPRESS_DRIVES = os.getenv("COMPRESS_DRIVES", "false").lower() == "true"
 
 random.seed(time.time())
 
@@ -69,7 +70,15 @@ def main():
     for drive_name in shared_drives:
         drives.append(GDrive(drive_name, admin_credentials, "shared"))
 
+    logger.debug(f"Whiltelist: {DRIVE_WHITELIST}")
     logger.debug(f"Drives initialized: {drives}")
+
+    if DRIVE_WHITELIST == [""]:
+        logger.warning("No whitelist specified, processing all drives")
+    else:
+        drives = [drive for drive in drives if drive.get_drive_id() in DRIVE_WHITELIST]
+
+    logger.info(f"Drives to process: {drives}")
 
     random.shuffle(drives) # In case of failure, every backup will have some unique data
     

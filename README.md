@@ -9,6 +9,7 @@ This project is a simple Python script that backs up all Google Drives in a Goog
 - Exports all files to a local directory
 - Saves metadata about the files to a JSON file (currently md5Checksum)
 - Links are converted to .txt files with path to the original file
+- Whitelist of drives
 
 # Usage
 
@@ -34,25 +35,26 @@ This project is a simple Python script that backs up all Google Drives in a Goog
 
 ## Enviroment variables
 
-| Name                     | Required | Purpose                                                                    | Type   | Default                  |
-|--------------------------|----------|----------------------------------------------------------------------------|--------|--------------------------|
-| `DELEGATED_ADMIN_EMAIL`    | Yes      | E-mail address of the superadmin account                                   | string |                            |
-| `WORKSPACE_CUSTOMER_ID`    | Yes      | Customer ID from Google Admin Console                                      | string |                            |
-| `SERVICE_ACCOUNT_FILE`     | Yes      | Path to service account .json key                                          | string | `service-account-key.json` |
-| `MAX_DOWNLOAD_THREADS`     | No       | How many threads (**per single drive**) are used to download files         | int    | `5`                        |
-| `MAX_DRIVE_PROCESSES`      | No       | Each drive gets it's own process. This specifies how many drives can be handled concurrently. | int    | `4`              |
-| `COMPRESS_DRIVES`          | No       | Compress the exported drives to a .zip file                                | bool   | `false`                   |
-| `COMPRESSION_PROCESSES`    | No       | How many processes are used to compress the drives (if supported by algorithm) | int    | `cpu_count()`              |
+| Name                     | Required | Purpose                                                                             | Type   | Default                    |
+|--------------------------|----------|-------------------------------------------------------------------------------------|--------|----------------------------|
+| `DELEGATED_ADMIN_EMAIL`    | Yes      | E-mail address of the superadmin account                                          | string |                            |
+| `WORKSPACE_CUSTOMER_ID`    | Yes      | Customer ID from Google Admin Console                                             | string |                            |
+| `SERVICE_ACCOUNT_FILE`     | Yes      | Path to service account .json key                                                 | string | `service-account-key.json` |
+| `MAX_DOWNLOAD_THREADS`     | No       | How many threads (**per single drive**) are used to download files                | int    | `5`                        |
+| `MAX_DRIVE_PROCESSES`      | No       | Each drive gets it's own process. This specifies how many drives can be handled concurrently. | int    | `4`            |
+| `COMPRESS_DRIVES`          | No       | Compress the exported drives to a .zip file                                       | bool   | `false`                    |
+| `COMPRESSION_PROCESSES`    | No       | How many processes are used to compress the drives (if supported by algorithm)    | int    | `cpu_count()`              |
+| `DRIVE_WHITELIST`          | No       | Comma-separated list of drive IDs to backup (e.g. `user@domain.tld`, `0AE1OlXvu8lCKUk9PVA`) | string |                  |
 
 
 # Roadmap
 
-- [ ] File compression
+- [x] Drive compression
 - [ ] Configurable algorithm for file compression
-- [ ] Configurable export formats
 - [ ] Configurable metadata fields
 - [ ] Configurable links behaviour
 - [ ] Workload Identity support
+- [x] Drive whitelist
 
 # Good to know
 
