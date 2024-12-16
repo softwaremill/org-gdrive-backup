@@ -89,6 +89,10 @@ def process_drive(args):
 
         logger.info(f"({drive_id}) Drive processed in {time.time() - start_time:.2f}s ({drive.get_file_list_length()} files)")
         current_task = "DONE"
+    except Exception as e:
+        logger.error(f"({drive_id}) Error processing drive: {e}")
+        with open(f"{downloads_path}/errors.txt", "a") as f:
+            f.write(f"Error processing drive: {e}\n")
     finally:
         stop_event.set()
         status_thread.join()
