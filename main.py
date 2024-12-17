@@ -2,7 +2,6 @@ import os.path
 import random
 import time
 from multiprocessing import Pool, cpu_count
-from src.utils.logger import app_logger as logger
 import threading
 from pydantic import Field, EmailStr, field_validator
 from pydantic_settings import BaseSettings
@@ -13,6 +12,8 @@ from src.google.gadmin import GAdmin
 from src.google.gdrive import GDrive
 from src.aws.s3 import S3
 from src.utils.compressor import Compressor
+from src.utils.logger import app_logger as logger
+from src.enums import STATE
 
 class Settings(BaseSettings):
     MAX_DOWNLOAD_THREADS: int = Field(20, env="MAX_DOWNLOAD_THREADS")
@@ -64,7 +65,7 @@ def get_credentials(subject):
     return Credentials.from_service_account_file(SETTINGS.SERVICE_ACCOUNT_FILE, scopes=SCOPES).with_subject(subject)
 
 def process_drive(args):
-    current_task = "DOWNLOADING"
+    current_task = STATE.DOWNLOADING
     drive, current_timestamp = args
     start_time = time.time()
     drive_id = drive.get_drive_id()
@@ -77,7 +78,7 @@ def process_drive(args):
         while not stop_event.is_set():
             time.sleep(1)
             counter += 1
-            if counter % 60 == 0 and current_task != "DONE":
+            if counter % 60 == 0 and current_task != STATE.DONE:
                 logger.info(f"({drive_id}) Current status: {current_task}. Files found: {drive.get_file_list_length()}. Time elapsed: {time.time() - start_time:.2f}s")
 
     stop_event = threading.Event()
@@ -97,7 +98,7 @@ def process_drive(args):
         logger.info(f"({drive_id}) Files downloaded")
 
         if SETTINGS.COMPRESS_DRIVES and len(drive.get_file_list()) > 0:
-            current_task = "COMPRESSING"
+            current_task = STATE.COMPRESSING
             logger.info(f"({drive_id}) Compressing files")
             compress_time_start = time.time()
             compressor = Compressor(SETTINGS.COMPRESSION_ALGORITHM, max_processes=SETTINGS.COMPRESSION_PROCESSES)
@@ -107,7 +108,7 @@ def process_drive(args):
         if len(drive.get_file_list()) == 0:
             logger.warning(f"({drive_id}) No files found, skipping upload")
         else:
-            current_task = "UPLOADING"
+            current_task = STATE.UPLOADING
             s3 = S3(SETTINGS.S3_BUCKET_NAME, SETTINGS.S3_ACCESS_KEY, SETTINGS.S3_SECRET_KEY)
             logger.info(f"({drive_id}) Uploading files to S3")
             upload_time_start = time.time()
@@ -115,7 +116,7 @@ def process_drive(args):
             logger.info(f"({drive_id}) Files uploaded in {time.time() - upload_time_start:.2f}s")
 
         logger.info(f"({drive_id}) Drive processed in {time.time() - start_time:.2f}s ({drive.get_file_list_length()} files)")
-        current_task = "DONE"
+        current_task = STATE.DONE
     except Exception as e:
         logger.error(f"({drive_id}) Error processing drive: {e}")
         with open(f"{downloads_path}/errors.txt", "a") as f:
