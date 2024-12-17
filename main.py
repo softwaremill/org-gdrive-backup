@@ -64,8 +64,33 @@ random.seed(time.time())
 def get_credentials(subject):
     return Credentials.from_service_account_file(SETTINGS.SERVICE_ACCOUNT_FILE, scopes=SCOPES).with_subject(subject)
 
+def download_files_from_drive(drive, metadata_path, files_path):
+    drive_id = drive.get_drive_id()
+    drive.fetch_file_list()
+    logger.debug(f"({drive_id}) Files found: {drive.get_file_list_length()}")
+    drive.dump_file_list(metadata_path)
+    logger.info(f"({drive_id}) File list saved to {metadata_path}")
+    
+    logger.info(f"({drive_id}) Downloading files")
+    drive.download_all_files(files_path, threads=SETTINGS.MAX_DOWNLOAD_THREADS)
+    logger.info(f"({drive_id}) Files downloaded")
+
+def compress_files_from_drive(drive_id, files_path):
+    logger.info(f"({drive_id}) Compressing files")
+    compress_time_start = time.time()
+    compressor = Compressor(SETTINGS.COMPRESSION_ALGORITHM, max_processes=SETTINGS.COMPRESSION_PROCESSES)
+    _, tar_size = compressor.compress_folder(files_path, delete_original=True)
+    logger.info(f"({drive_id}) Files compressed in {time.time() - compress_time_start:.2f}s ({tar_size/1024/1024:.2f}MB)")
+
+def upload_files_to_s3(drive_id, downloads_path, timestamp):
+    s3 = S3(SETTINGS.S3_BUCKET_NAME, SETTINGS.S3_ACCESS_KEY, SETTINGS.S3_SECRET_KEY)
+    logger.info(f"({drive_id}) Uploading files to S3")
+    upload_time_start = time.time()
+    s3.upload_folder(downloads_path, f"{timestamp}/{drive_id}")
+    logger.info(f"({drive_id}) Files uploaded in {time.time() - upload_time_start:.2f}s")
+
 def process_drive(args):
-    current_task = STATE.DOWNLOADING
+    current_task = STATE.STARTING
     drive, current_timestamp = args
     start_time = time.time()
     drive_id = drive.get_drive_id()
@@ -79,7 +104,7 @@ def process_drive(args):
             time.sleep(1)
             counter += 1
             if counter % 60 == 0 and current_task != STATE.DONE:
-                logger.info(f"({drive_id}) Current status: {current_task}. Files found: {drive.get_file_list_length()}. Time elapsed: {time.time() - start_time:.2f}s")
+                logger.info(f"({drive_id}) Current status: {current_task.value}. Files found: {drive.get_file_list_length()}. Time elapsed: {time.time() - start_time:.2f}s")
 
     stop_event = threading.Event()
     status_thread = threading.Thread(target=print_status, daemon=True)
@@ -88,35 +113,29 @@ def process_drive(args):
     try:
         logger.info(f"({drive_id}) Processing drive")
         
-        drive.fetch_file_list()
-        logger.debug(f"({drive_id}) Files found: {drive.get_file_list_length()}")
-        drive.dump_file_list(metadata_path)
-        logger.info(f"({drive_id}) File list saved to {metadata_path}")
-        
-        logger.info(f"({drive_id}) Downloading files")
-        drive.download_all_files(files_path, threads=SETTINGS.MAX_DOWNLOAD_THREADS)
-        logger.info(f"({drive_id}) Files downloaded")
+        current_task = STATE.DOWNLOADING
+        download_files_from_drive(drive, metadata_path, files_path)
 
-        if SETTINGS.COMPRESS_DRIVES and len(drive.get_file_list()) > 0:
+        file_count = len(drive.get_file_list())
+
+        if SETTINGS.COMPRESS_DRIVES and file_count > 0:
             current_task = STATE.COMPRESSING
-            logger.info(f"({drive_id}) Compressing files")
-            compress_time_start = time.time()
-            compressor = Compressor(SETTINGS.COMPRESSION_ALGORITHM, max_processes=SETTINGS.COMPRESSION_PROCESSES)
-            _, tar_size = compressor.compress_folder(files_path, delete_original=True)
-            logger.info(f"({drive_id}) Files compressed in {time.time() - compress_time_start:.2f}s ({tar_size/1024/1024:.2f}MB)")
-
-        if len(drive.get_file_list()) == 0:
-            logger.warning(f"({drive_id}) No files found, skipping upload")
+            compress_files_from_drive(drive_id, files_path)
+        elif SETTINGS.COMPRESS_DRIVES and file_count == 0:
+            logger.debug(f"({drive_id}) No files found, skipping compression")
         else:
-            current_task = STATE.UPLOADING
-            s3 = S3(SETTINGS.S3_BUCKET_NAME, SETTINGS.S3_ACCESS_KEY, SETTINGS.S3_SECRET_KEY)
-            logger.info(f"({drive_id}) Uploading files to S3")
-            upload_time_start = time.time()
-            s3.upload_folder(downloads_path, f"{current_timestamp}/{drive_id}")
-            logger.info(f"({drive_id}) Files uploaded in {time.time() - upload_time_start:.2f}s")
+            logger.debug(f"({drive_id}) Compression disabled")
 
-        logger.info(f"({drive_id}) Drive processed in {time.time() - start_time:.2f}s ({drive.get_file_list_length()} files)")
+        if file_count > 0:
+            current_task = STATE.UPLOADING
+            upload_files_to_s3(drive_id, downloads_path, current_timestamp)
+        else:
+            logger.warning(f"({drive_id}) No files found, skipping upload")
+            
         current_task = STATE.DONE
+        logger.info(f"({drive_id}) Drive processed in {time.time() - start_time:.2f}s ({drive.get_file_list_length()} files)")
+        
+
     except Exception as e:
         logger.error(f"({drive_id}) Error processing drive: {e}")
         with open(f"{downloads_path}/errors.txt", "a") as f:
