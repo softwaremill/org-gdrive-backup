@@ -6,8 +6,8 @@ class GAdmin:
     def __init__(self, workspace_customer_id: str, credentials: Credentials):
         self.workspace_customer_id = workspace_customer_id
         self.credentials = credentials
-        self.users_fetched = False
-        self.shared_drives_fetched = False
+        self._users_fetched = False
+        self._shared_drives_fetched = False
 
     def fetch_shared_drives(self):
         self.shared_drives = []
