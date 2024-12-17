@@ -144,16 +144,20 @@ class GDrive:
     def download_binary_file(self, file, base_path):
         drive_service = self.get_drive_service()
         request = drive_service.files().get_media(fileId=file["id"])
-        full_path = f"{base_path}/{file['path']}/{file['name']}"
-        os.makedirs(os.path.dirname(full_path), exist_ok=True)
-        with open(full_path, "wb") as f:
+        new_file_path = f"{base_path}/{file['path']}/{file['name']}"
+        self.write_request_to_file(request, new_file_path)
+
+    def write_request_to_file(self, request, file_path):
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, "wb") as f:
             f.write(request.execute())
 
-
     def export_file(self, file, base_path):
-        drive_service = self.get_drive_service()
         if file['mimeType'] == "application/vnd.google-apps.folder":
             return
+        
+        drive_service = self.get_drive_service()
+        new_file_path = f"{base_path}/{file['path']}/{file['name']}"
         
         match file['mimeType']:
             case "application/vnd.google-apps.shortcut":
@@ -163,29 +167,19 @@ class GDrive:
                     f.write(original_file_path)
             case "application/vnd.google-apps.document":
                 request = drive_service.files().export_media(fileId=file['id'], mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-                os.makedirs(f"{base_path}/{file['path']}", exist_ok=True)
-                with open(f"{base_path}/{file['path']}/{file['name']}.docx", "wb") as f:
-                    f.write(request.execute())
+                self.write_request_to_file(request, f"{new_file_path}.docx")
             case "application/vnd.google-apps.spreadsheet":
                 request = drive_service.files().export_media(fileId=file['id'], mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                os.makedirs(f"{base_path}/{file['path']}", exist_ok=True)
-                with open(f"{base_path}/{file['path']}/{file['name']}.xlsx", "wb") as f:
-                    f.write(request.execute())
+                self.write_request_to_file(request, f"{new_file_path}.xlsx")
             case "application/vnd.google-apps.presentation":
                 request = drive_service.files().export_media(fileId=file['id'], mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation")
-                os.makedirs(f"{base_path}/{file['path']}", exist_ok=True)
-                with open(f"{base_path}/{file['path']}/{file['name']}.pptx", "wb") as f:
-                    f.write(request.execute())
+                self.write_request_to_file(request, f"{new_file_path}.pptx")
             case "application/vnd.google-apps.drawing":
                 request = drive_service.files().export_media(fileId=file['id'], mimeType="application/pdf")
-                os.makedirs(f"{base_path}/{file['path']}", exist_ok=True)
-                with open(f"{base_path}/{file['path']}/{file['name']}.pdf", "wb") as f:
-                    f.write(request.execute())
+                self.write_request_to_file(request, f"{new_file_path}.pdf")
             case "application/vnd.google-apps.script":
                 request = drive_service.files().export_media(fileId=file['id'], mimeType="application/vnd.google-apps.script+json")
-                os.makedirs(f"{base_path}/{file['path']}", exist_ok=True)
-                with open(f"{base_path}/{file['path']}/{file['name']}.json", "wb") as f:
-                    f.write(request.execute())
+                self.write_request_to_file(request, f"{new_file_path}.json")
             case _:
                 with open(f"{base_path}/errors.txt", "a") as f:
                     logger.warning(f"Unknown file type: {file['mimeType']} ({file['id']})")
