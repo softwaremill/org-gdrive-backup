@@ -4,13 +4,16 @@ from googleapiclient.discovery import build
 
 class GAdmin:
     def __init__(self, workspace_customer_id: str, credentials: Credentials):
-        self.workspace_customer_id = workspace_customer_id
-        self.credentials = credentials
         self._users_fetched = False
         self._shared_drives_fetched = False
 
-    def fetch_shared_drives(self):
+        self.users = []
         self.shared_drives = []
+        self.workspace_customer_id = workspace_customer_id
+        self.credentials = credentials
+
+    def fetch_shared_drives(self):
+        self.shared_drives.clear()
         service = build("drive", "v3", credentials=self.credentials)
         request = service.drives().list()
         while request is not None:
@@ -19,7 +22,7 @@ class GAdmin:
             request = service.drives().list_next(request, response)
 
     def fetch_user_list(self):
-        self.users = []
+        self.users.clear()
         service = build("admin", "directory_v1", credentials=self.credentials)
         request = service.users().list(customer=self.workspace_customer_id, maxResults=100, orderBy="email")
         while request is not None:
