@@ -155,11 +155,6 @@ class GDrive:
         new_file_path = f"{base_path}/{file['path']}/{file['name']}"
         self.write_request_to_file(request, new_file_path)
 
-    def write_request_to_file(self, request, file_path):
-        os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        with open(file_path, "wb") as f:
-            f.write(request.execute())
-
     def export_file(self, file, base_path):
         if file['mimeType'] == "application/vnd.google-apps.folder":
             return
@@ -175,6 +170,10 @@ class GDrive:
                 logger.warning(f"Unknown file type: {file['mimeType']} ({file['id']})")
                 f.write(f"Unknown file type: {file['mimeType']} ({file['id']})\n")
                 
+    def write_request_to_file(self, request, file_path):
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+        with open(file_path, "wb") as f:
+            f.write(request.execute())
 
     def _handle_shortcut_export(self, file, drive_service, new_file_path):
         original_file = file['shortcutDetails']['targetId']
