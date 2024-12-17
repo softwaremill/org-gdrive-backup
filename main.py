@@ -2,17 +2,17 @@ import os.path
 import random
 import time
 from multiprocessing import Pool, cpu_count
-from logger import app_logger as logger
+from src.utils.logger import app_logger as logger
 import threading
 from pydantic import Field, EmailStr, field_validator
 from pydantic_settings import BaseSettings
 
 from google.oauth2.service_account import Credentials
 
-from GAdmin import GAdmin
-from GDrive import GDrive
-from S3 import S3
-from Compressor import Compressor
+from src.google.gadmin import GAdmin
+from src.google.gdrive import GDrive
+from src.aws.s3 import S3
+from src.utils.compressor import Compressor
 
 class Settings(BaseSettings):
     MAX_DOWNLOAD_THREADS: int = Field(20, env="MAX_DOWNLOAD_THREADS")
@@ -51,7 +51,6 @@ class Settings(BaseSettings):
         if v is None or v == "":
             raise ValueError(f"{info.field_name} must be set")
         return v
-    
 
 SETTINGS = Settings()
 SCOPES = ["https://www.googleapis.com/auth/admin.directory.user.readonly", 
@@ -127,7 +126,6 @@ def process_drive(args):
 
 
 def main():
-
 
     admin_credentials = get_credentials(SETTINGS.DELEGATED_ADMIN_EMAIL)
     gadmin = GAdmin(SETTINGS.WORKSPACE_CUSTOMER_ID, admin_credentials)

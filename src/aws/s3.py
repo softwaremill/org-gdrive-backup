@@ -1,6 +1,6 @@
 import os
 import boto3
-from logger import app_logger as logger
+from src.utils.logger import app_logger as logger
 
 class S3:
     def __init__(self, bucket_name, access_key, secret_key):
