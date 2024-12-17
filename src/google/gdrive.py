@@ -18,6 +18,14 @@ class GDrive:
         self.type = type
         self.files = []
         self.files_fetched = False
+        self._handler_functions = {
+            "application/vnd.google-apps.shortcut": self._handle_shortcut_export,
+            "application/vnd.google-apps.document": self._handle_document_export,
+            "application/vnd.google-apps.spreadsheet": self._handle_spreadsheet_export,
+            "application/vnd.google-apps.presentation": self._handle_presentation_export,
+            "application/vnd.google-apps.drawing": self._handle_drawing_export,
+            "application/vnd.google-apps.script": self._handle_script_export
+        }
 
     def __repr__(self) -> str:
         return f"GDrive({self.drive_id}, {self.type})"
@@ -158,29 +166,38 @@ class GDrive:
         
         drive_service = self.get_drive_service()
         new_file_path = f"{base_path}/{file['path']}/{file['name']}"
-        
-        match file['mimeType']:
-            case "application/vnd.google-apps.shortcut":
-                original_file = file['shortcutDetails']['targetId']
-                original_file_path = self.fetch_file_path(original_file, drive_service, supportsAllDrives=True)
-                with open(f"{base_path}/{file['path']}/{file['name']}.lnk.txt", "w") as f:
-                    f.write(original_file_path)
-            case "application/vnd.google-apps.document":
-                request = drive_service.files().export_media(fileId=file['id'], mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
-                self.write_request_to_file(request, f"{new_file_path}.docx")
-            case "application/vnd.google-apps.spreadsheet":
-                request = drive_service.files().export_media(fileId=file['id'], mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                self.write_request_to_file(request, f"{new_file_path}.xlsx")
-            case "application/vnd.google-apps.presentation":
-                request = drive_service.files().export_media(fileId=file['id'], mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation")
-                self.write_request_to_file(request, f"{new_file_path}.pptx")
-            case "application/vnd.google-apps.drawing":
-                request = drive_service.files().export_media(fileId=file['id'], mimeType="application/pdf")
-                self.write_request_to_file(request, f"{new_file_path}.pdf")
-            case "application/vnd.google-apps.script":
-                request = drive_service.files().export_media(fileId=file['id'], mimeType="application/vnd.google-apps.script+json")
-                self.write_request_to_file(request, f"{new_file_path}.json")
-            case _:
-                with open(f"{base_path}/errors.txt", "a") as f:
-                    logger.warning(f"Unknown file type: {file['mimeType']} ({file['id']})")
-                    f.write(f"Unknown file type: {file['mimeType']} ({file['id']})\n")
+
+        handler = self._handler_functions.get(file['mimeType'], None)
+        if handler is not None:
+            handler(file, drive_service, new_file_path)
+        else:
+            with open(f"{base_path}/errors.txt", "a") as f:
+                logger.warning(f"Unknown file type: {file['mimeType']} ({file['id']})")
+                f.write(f"Unknown file type: {file['mimeType']} ({file['id']})\n")
+                
+
+    def _handle_shortcut_export(self, file, drive_service, new_file_path):
+        original_file = file['shortcutDetails']['targetId']
+        original_file_path = self.fetch_file_path(original_file, drive_service, supportsAllDrives=True)
+        with open(f"{new_file_path}.lnk.txt", "w") as f:
+            f.write(original_file_path)
+
+    def _handle_document_export(self, file, drive_service, new_file_path):
+        request = drive_service.files().export_media(fileId=file['id'], mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        self.write_request_to_file(request, f"{new_file_path}.docx")
+    
+    def _handle_spreadsheet_export(self, file, drive_service, new_file_path):
+        request = drive_service.files().export_media(fileId=file['id'], mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        self.write_request_to_file(request, f"{new_file_path}.xlsx")
+    
+    def _handle_presentation_export(self, file, drive_service, new_file_path):
+        request = drive_service.files().export_media(fileId=file['id'], mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation")
+        self.write_request_to_file(request, f"{new_file_path}.pptx")
+    
+    def _handle_drawing_export(self, file, drive_service, new_file_path):
+        request = drive_service.files().export_media(fileId=file['id'], mimeType="application/pdf")
+        self.write_request_to_file(request, f"{new_file_path}.pdf")
+
+    def _handle_script_export(self, file, drive_service, new_file_path):
+        request = drive_service.files().export_media(fileId=file['id'], mimeType="application/vnd.google-apps.script+json")
+        self.write_request_to_file(request, f"{new_file_path}.json")
