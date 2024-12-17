@@ -131,18 +131,18 @@ class GDrive:
                 future.result()
 
     def download_file(self, file, base_path):
-        drive_service = self.get_drive_service()
         try:
             if 'md5Checksum' in file:
-                self.download_binary_file(file, base_path, drive_service)
+                self.download_binary_file(file, base_path)
             else:
-                self.export_file(file, base_path, drive_service)
+                self.export_file(file, base_path)
         except Exception as e:
             with open(f"{base_path}/errors.txt", "a") as f:
                 logger.error(f"Error downloading file {file['name']} ({file['id']}, (drive: {self.drive_id})): {e}")
                 f.write(f"Error downloading file {file['name']} ({file['id']}): {e}\n")
 
-    def download_binary_file(self, file, base_path, drive_service):
+    def download_binary_file(self, file, base_path):
+        drive_service = self.get_drive_service()
         request = drive_service.files().get_media(fileId=file["id"])
         full_path = f"{base_path}/{file['path']}/{file['name']}"
         os.makedirs(os.path.dirname(full_path), exist_ok=True)
@@ -150,7 +150,8 @@ class GDrive:
             f.write(request.execute())
 
 
-    def export_file(self, file, base_path, drive_service):
+    def export_file(self, file, base_path):
+        drive_service = self.get_drive_service()
         if file['mimeType'] == "application/vnd.google-apps.folder":
             return
         
