@@ -31,12 +31,12 @@ class GAdmin:
             request = service.users().list_next(request, response)
 
     def get_user_list(self):
-        if not self.users_fetched:
+        if not self._users_fetched:
             self.fetch_user_list()
         return self.users
     
     def get_shared_drives(self):
-        if not self.shared_drives_fetched:
+        if not self._shared_drives_fetched:
             self.fetch_shared_drives()
         return self.shared_drives
         
