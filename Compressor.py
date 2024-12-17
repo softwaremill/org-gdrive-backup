@@ -2,12 +2,11 @@ import os
 import shutil
 
 class Compressor:
-    def __init__(self, algorithm, delete_original=False, max_processes=1):
+    def __init__(self, algorithm, max_processes=1):
         self.algorithm = algorithm
-        self.delete_original = delete_original
         self.max_processes = max_processes
 
-    def compress_folder(self, path):
+    def compress_folder(self, path, delete_original=False,):
         if not os.path.isdir(path):
             raise ValueError(f"{path} is not a directory")
         
@@ -30,7 +29,7 @@ class Compressor:
         if exit_code != 0:
             raise RuntimeError(f"Compression failed with exit code {exit_code}")
             
-        if self.delete_original:
+        if delete_original:
             shutil.rmtree(path)
 
         return tar_path, tar_size

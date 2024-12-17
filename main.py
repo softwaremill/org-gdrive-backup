@@ -4,6 +4,8 @@ import time
 from multiprocessing import Pool, cpu_count
 from logger import app_logger as logger
 import threading
+from pydantic import Field, EmailStr, field_validator
+from pydantic_settings import BaseSettings
 
 from google.oauth2.service_account import Credentials
 
@@ -12,29 +14,55 @@ from GDrive import GDrive
 from S3 import S3
 from Compressor import Compressor
 
-MAX_DOWNLOAD_THREADS = int(os.getenv("MAX_DOWNLOAD_THREADS", 20))
-MAX_DRIVE_PROCESSES = int(os.getenv("MAX_DRIVE_PROCESSES", 4))
-COMPRESS_DRIVES = os.getenv("COMPRESS_DRIVES", "false").lower() == "true"
-COMPRESSION_ALGORITHM = os.getenv("COMPRESSION_ALGORITHM", "pigz")
-COMPRESSION_PROCESSES = int(os.getenv("COMPRESSION_PROCESSES", cpu_count()))
-DRIVE_WHITELIST = os.getenv("DRIVE_WHITELIST", "").split(",")
+class Settings(BaseSettings):
+    MAX_DOWNLOAD_THREADS: int = Field(20, env="MAX_DOWNLOAD_THREADS")
+    MAX_DRIVE_PROCESSES: int = Field(4, env="MAX_DRIVE_PROCESSES")
+    COMPRESS_DRIVES: bool = Field(False, env="COMPRESS_DRIVES")
+    COMPRESSION_ALGORITHM: str = Field("pigz", env="COMPRESSION_ALGORITHM")
+    COMPRESSION_PROCESSES: int = Field(cpu_count(), env="COMPRESSION_PROCESSES")
+    DRIVE_WHITELIST: list = Field([], env="DRIVE_WHITELIST")
+    SERVICE_ACCOUNT_FILE: str = Field("service-account-key.json", env="SERVICE_ACCOUNT_FILE")
+    DELEGATED_ADMIN_EMAIL: EmailStr = Field(None, env="DELEGATED_ADMIN_EMAIL")
+    WORKSPACE_CUSTOMER_ID: str = Field(None, env="WORKSPACE_CUSTOMER_ID")
+    S3_BUCKET_NAME: str = Field(None, env="S3_BUCKET_NAME")
+    S3_ACCESS_KEY: str = Field(None, env="S3_ACCESS_KEY")
+    S3_SECRET_KEY: str = Field(None, env="S3_SECRET_KEY")
 
-SERVICE_ACCOUNT_FILE = os.getenv("SERVICE_ACCOUNT_FILE", "service-account-key.json")
+    @field_validator("MAX_DOWNLOAD_THREADS", "MAX_DRIVE_PROCESSES", "COMPRESSION_PROCESSES")
+    def validate_positive_values(cls, v, info):
+        if v <= 0:
+            raise ValueError(f"{info.field_name} must be positive")
+        return v
+    
+    @field_validator("COMPRESSION_ALGORITHM")
+    def validate_compression_algorithm(cls, v, info):
+        if v not in ["pigz", "lz4"]:
+            raise ValueError(f"{info.field_name} must be 'pigz' or 'lz4'")
+        return v
+    
+    @field_validator("SERVICE_ACCOUNT_FILE")
+    def validate_file_exists(cls, v, info):
+        if not os.path.exists(v):
+            raise ValueError(f"{info.field_name} does not exist")
+        return v
+    
+    @field_validator("WORKSPACE_CUSTOMER_ID", "S3_BUCKET_NAME", "S3_ACCESS_KEY", "S3_SECRET_KEY")
+    def validate_not_none(cls, v, info):
+        if v is None or v == "":
+            raise ValueError(f"{info.field_name} must be set")
+        return v
+    
+
+SETTINGS = Settings()
 SCOPES = ["https://www.googleapis.com/auth/admin.directory.user.readonly", 
           "https://www.googleapis.com/auth/drive.metadata.readonly",
           "https://www.googleapis.com/auth/drive.readonly"]
-DELEGATED_ADMIN_EMAIL = os.getenv("DELEGATED_ADMIN_EMAIL")
-WORKSPACE_CUSTOMER_ID = os.getenv("WORKSPACE_CUSTOMER_ID")
-
-S3_BUCKET_NAME = os.getenv("S3_BUCKET_NAME")
-S3_ACCESS_KEY = os.getenv("S3_ACCESS_KEY")
-S3_SECRET_KEY = os.getenv("S3_SECRET_KEY")
 
 random.seed(time.time())
 
 
 def get_credentials(subject):
-    return Credentials.from_service_account_file(SERVICE_ACCOUNT_FILE, scopes=SCOPES).with_subject(subject)
+    return Credentials.from_service_account_file(SETTINGS.SERVICE_ACCOUNT_FILE, scopes=SCOPES).with_subject(subject)
 
 def process_drive(args):
     current_task = "DOWNLOADING"
@@ -66,22 +94,22 @@ def process_drive(args):
         logger.info(f"({drive_id}) File list saved to {metadata_path}")
         
         logger.info(f"({drive_id}) Downloading files")
-        drive.download_all_files(files_path, threads=MAX_DOWNLOAD_THREADS)
+        drive.download_all_files(files_path, threads=SETTINGS.MAX_DOWNLOAD_THREADS)
         logger.info(f"({drive_id}) Files downloaded")
 
-        if COMPRESS_DRIVES and len(drive.get_file_list()) > 0:
+        if SETTINGS.COMPRESS_DRIVES and len(drive.get_file_list()) > 0:
             current_task = "COMPRESSING"
             logger.info(f"({drive_id}) Compressing files")
             compress_time_start = time.time()
-            compressor = Compressor(COMPRESSION_ALGORITHM, delete_original=True, max_processes=COMPRESSION_PROCESSES)
-            _, tar_size = compressor.compress_folder(files_path)
+            compressor = Compressor(SETTINGS.COMPRESSION_ALGORITHM, max_processes=SETTINGS.COMPRESSION_PROCESSES)
+            _, tar_size = compressor.compress_folder(files_path, delete_original=True)
             logger.info(f"({drive_id}) Files compressed in {time.time() - compress_time_start:.2f}s ({tar_size/1024/1024:.2f}MB)")
 
         if len(drive.get_file_list()) == 0:
             logger.warning(f"({drive_id}) No files found, skipping upload")
         else:
             current_task = "UPLOADING"
-            s3 = S3(S3_BUCKET_NAME, S3_ACCESS_KEY, S3_SECRET_KEY)
+            s3 = S3(SETTINGS.S3_BUCKET_NAME, SETTINGS.S3_ACCESS_KEY, SETTINGS.S3_SECRET_KEY)
             logger.info(f"({drive_id}) Uploading files to S3")
             upload_time_start = time.time()
             s3.upload_folder(downloads_path, f"{current_timestamp}/{drive_id}")
@@ -97,25 +125,12 @@ def process_drive(args):
         stop_event.set()
         status_thread.join()
 
-def validate_env():
-    if DELEGATED_ADMIN_EMAIL == "" or DELEGATED_ADMIN_EMAIL is None:
-        raise ValueError("DELEGATED_ADMIN_EMAIL is not set")
-    if WORKSPACE_CUSTOMER_ID == "" or WORKSPACE_CUSTOMER_ID is None:
-        raise ValueError("WORKSPACE_CUSTOMER_ID is not set")
-    if S3_BUCKET_NAME == "" or S3_BUCKET_NAME is None:
-        raise ValueError("S3_BUCKET_NAME is not set")
-    if S3_ACCESS_KEY == "" or S3_ACCESS_KEY is None:
-        raise ValueError("S3_ACCESS_KEY is not set")
-    if S3_SECRET_KEY == "" or S3_SECRET_KEY is None:
-        raise ValueError("S3_SECRET_KEY is not set")
-
 
 def main():
 
-    validate_env()
 
-    admin_credentials = get_credentials(DELEGATED_ADMIN_EMAIL)
-    gadmin = GAdmin(WORKSPACE_CUSTOMER_ID, admin_credentials)
+    admin_credentials = get_credentials(SETTINGS.DELEGATED_ADMIN_EMAIL)
+    gadmin = GAdmin(SETTINGS.WORKSPACE_CUSTOMER_ID, admin_credentials)
 
     users = [user["primaryEmail"] for user in gadmin.get_user_list()]
     logger.debug(f"Users found: {users}")
@@ -128,19 +143,19 @@ def main():
     for drive_name in shared_drives:
         drives.append(GDrive(drive_name, admin_credentials, "shared"))
 
-    logger.debug(f"Whiltelist: {DRIVE_WHITELIST}")
+    logger.debug(f"Whiltelist: {SETTINGS.DRIVE_WHITELIST}")
     logger.debug(f"Drives initialized: {drives}")
 
-    if DRIVE_WHITELIST == [""]:
+    if len(SETTINGS.DRIVE_WHITELIST) == 0:
         logger.warning("No whitelist specified, processing all drives")
     else:
-        drives = [drive for drive in drives if drive.get_drive_id() in DRIVE_WHITELIST]
+        drives = [drive for drive in drives if drive.get_drive_id() in SETTINGS.DRIVE_WHITELIST]
 
     logger.info(f"Drives to process: {drives}")
 
     random.shuffle(drives) # In case of failure, every backup will have some unique data
     
-    with Pool(processes=MAX_DRIVE_PROCESSES) as pool:
+    with Pool(processes=SETTINGS.MAX_DRIVE_PROCESSES) as pool:
         current_timestamp = time.strftime("%Y%m%d-%H%M%S")
         logger.debug(f"Current timestamp: {current_timestamp}")
 
