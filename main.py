@@ -5,7 +5,7 @@ from multiprocessing import Pool, cpu_count
 import threading
 from pydantic import Field, EmailStr, field_validator
 from pydantic_settings import BaseSettings
-
+from typing import Any, List, Tuple, Type
 from google.oauth2.service_account import Credentials
 
 from src.google.gadmin import GAdmin
@@ -13,45 +13,9 @@ from src.google.gdrive import GDrive
 from src.aws.s3 import S3
 from src.utils.compressor import Compressor
 from src.utils.logger import app_logger as logger
+from src.utils.settings import Settings
 from src.enums import STATE
 
-class Settings(BaseSettings):
-    MAX_DOWNLOAD_THREADS: int = Field(20, env="MAX_DOWNLOAD_THREADS")
-    MAX_DRIVE_PROCESSES: int = Field(4, env="MAX_DRIVE_PROCESSES")
-    COMPRESS_DRIVES: bool = Field(False, env="COMPRESS_DRIVES")
-    COMPRESSION_ALGORITHM: str = Field("pigz", env="COMPRESSION_ALGORITHM")
-    COMPRESSION_PROCESSES: int = Field(cpu_count(), env="COMPRESSION_PROCESSES")
-    DRIVE_WHITELIST: list = Field([], env="DRIVE_WHITELIST")
-    SERVICE_ACCOUNT_FILE: str = Field("service-account-key.json", env="SERVICE_ACCOUNT_FILE")
-    DELEGATED_ADMIN_EMAIL: EmailStr = Field(None, env="DELEGATED_ADMIN_EMAIL")
-    WORKSPACE_CUSTOMER_ID: str = Field(None, env="WORKSPACE_CUSTOMER_ID")
-    S3_BUCKET_NAME: str = Field(None, env="S3_BUCKET_NAME")
-    S3_ACCESS_KEY: str = Field(None, env="S3_ACCESS_KEY")
-    S3_SECRET_KEY: str = Field(None, env="S3_SECRET_KEY")
-
-    @field_validator("MAX_DOWNLOAD_THREADS", "MAX_DRIVE_PROCESSES", "COMPRESSION_PROCESSES")
-    def validate_positive_values(cls, v, info):
-        if v <= 0:
-            raise ValueError(f"{info.field_name} must be positive")
-        return v
-    
-    @field_validator("COMPRESSION_ALGORITHM")
-    def validate_compression_algorithm(cls, v, info):
-        if v not in ["pigz", "lz4"]:
-            raise ValueError(f"{info.field_name} must be 'pigz' or 'lz4'")
-        return v
-    
-    @field_validator("SERVICE_ACCOUNT_FILE")
-    def validate_file_exists(cls, v, info):
-        if not os.path.exists(v):
-            raise ValueError(f"{info.field_name} does not exist")
-        return v
-    
-    @field_validator("WORKSPACE_CUSTOMER_ID", "S3_BUCKET_NAME", "S3_ACCESS_KEY", "S3_SECRET_KEY")
-    def validate_not_none(cls, v, info):
-        if v is None or v == "":
-            raise ValueError(f"{info.field_name} must be set")
-        return v
 
 SETTINGS = Settings()
 SCOPES = ["https://www.googleapis.com/auth/admin.directory.user.readonly", 
@@ -71,7 +35,7 @@ def download_files_from_drive(drive, metadata_path, files_path):
     drive.dump_file_list(metadata_path)
     logger.info(f"({drive_id}) File list saved to {metadata_path}")
     
-    logger.info(f"({drive_id}) Downloading files")
+    logger.info(f"({drive_id}) Downloading {drive.get_file_list_length()} files")
     drive.download_all_files(files_path, threads=SETTINGS.MAX_DOWNLOAD_THREADS)
     logger.info(f"({drive_id}) Files downloaded")
 
@@ -146,7 +110,6 @@ def process_drive(args):
 
 
 def main():
-
     admin_credentials = get_credentials(SETTINGS.DELEGATED_ADMIN_EMAIL)
     gadmin = GAdmin(SETTINGS.WORKSPACE_CUSTOMER_ID, admin_credentials)
 
@@ -163,6 +126,8 @@ def main():
 
     logger.debug(f"Whiltelist: {SETTINGS.DRIVE_WHITELIST}")
     logger.debug(f"Drives initialized: {drives}")
+
+    logger.error(SETTINGS.DRIVE_WHITELIST)
 
     if len(SETTINGS.DRIVE_WHITELIST) == 0:
         logger.warning("No whitelist specified, processing all drives")
