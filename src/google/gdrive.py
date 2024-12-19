@@ -21,7 +21,7 @@ class GDrive:
         self.credentials = credentials
         self.drive_type = drive_type
         self.files = []
-        self.files_fetched = False
+        self._files_fetched = False
         self._file_export_handlers = {
             "application/vnd.google-apps.shortcut": self._handle_shortcut_export,
             "application/vnd.google-apps.document": self._handle_document_export,
@@ -100,7 +100,7 @@ class GDrive:
         for i, f in enumerate(self.files):
             f["path"] = self.build_file_path(f["id"])
             self.files[i] = f
-        self.files_fetched = True
+        self._files_fetched = True
         
 
     def find_file_by_id(self, file_id: str):
@@ -124,14 +124,14 @@ class GDrive:
         return "/".join(reversed(file_path))
                 
     def dump_file_list(self, path):
-        if not self.files_fetched:
+        if not self._files_fetched:
             self.fetch_file_list()
         os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w") as f:
             json.dump(self.files, f, indent=4)
 
     def download_all_files(self, base_path, threads=20):
-        if not self.files_fetched:
+        if not self._files_fetched:
             self.fetch_file_list()
         if len(self.files) == 0:
             return
