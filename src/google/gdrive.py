@@ -61,36 +61,42 @@ class GDrive:
 
     def fetch_file_list(self, page_size=100):
         drive_service = build('drive', 'v3', credentials=self.credentials)
-        self.files = []
+        self.files.clear()
 
         if self.drive_type == DRIVE_TYPE.USER:
-            request = drive_service.files().list(pageSize=page_size, fields="nextPageToken, files(id, name, md5Checksum, parents, mimeType, shortcutDetails, permissions)")
-            while request is not None:
-                response = request.execute()
-                self.files.extend(response.get("files", []))
-                request = drive_service.files().list_next(request, response)
+            self._fetch_file_list_user_drive(drive_service, page_size)
         elif self.drive_type == DRIVE_TYPE.SHARED:
-            known_permissions = {}
-            request = drive_service.files().list(pageSize=page_size, fields="nextPageToken, files(id, name, md5Checksum, parents, mimeType, shortcutDetails, permissionIds)", corpora="drive", driveId=self.drive_id, includeItemsFromAllDrives=True, supportsAllDrives=True)
-            while request is not None:
-                response = request.execute()
-                self.files.extend(response.get("files", []))
-                request = drive_service.files().list_next(request, response)
-            for f in self.files:
-                f["permissions"] = []
-                if "permissionIds" in f:
-                    for permission_id in f["permissionIds"]:
-                        if permission_id in known_permissions:
-                            f["permissions"].append(known_permissions[permission_id])
-                        else:
-                            permission = drive_service.permissions().get(fileId=f["id"], permissionId=permission_id, fields="id, displayName, type, kind, emailAddress, role", supportsAllDrives=True).execute()
-                            f["permissions"].append(permission)
-                            known_permissions[permission_id] = permission
+            self._fetch_file_list_shared_drive(drive_service, page_size)
 
         for i, f in enumerate(self.files):
             f["path"] = self.build_file_path(f["id"])
             self.files[i] = f
         self._files_fetched = True
+
+    def _fetch_file_list_user_drive(self, drive_service, page_size):
+        request = drive_service.files().list(pageSize=page_size, fields="nextPageToken, files(id, name, md5Checksum, parents, mimeType, shortcutDetails, permissions)")
+        while request is not None:
+            response = request.execute()
+            self.files.extend(response.get("files", []))
+            request = drive_service.files().list_next(request, response)
+    
+    def _fetch_file_list_shared_drive(self, drive_service, page_size):
+        known_permissions = {}
+        request = drive_service.files().list(pageSize=page_size, fields="nextPageToken, files(id, name, md5Checksum, parents, mimeType, shortcutDetails, permissionIds)", corpora="drive", driveId=self.drive_id, includeItemsFromAllDrives=True, supportsAllDrives=True)
+        while request is not None:
+            response = request.execute()
+            self.files.extend(response.get("files", []))
+            request = drive_service.files().list_next(request, response)
+        for f in self.files:
+            f["permissions"] = []
+            if "permissionIds" in f:
+                for permission_id in f["permissionIds"]:
+                    if permission_id in known_permissions:
+                        f["permissions"].append(known_permissions[permission_id])
+                    else:
+                        permission = drive_service.permissions().get(fileId=f["id"], permissionId=permission_id, fields="id, displayName, type, kind, emailAddress, role", supportsAllDrives=True).execute()
+                        f["permissions"].append(permission)
+                        known_permissions[permission_id] = permission
         
 
     def find_file_by_id(self, file_id: str):
