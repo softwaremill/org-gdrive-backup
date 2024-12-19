@@ -135,13 +135,11 @@ class GDrive:
             futures = []
             for f in self.files:
                 futures.append(executor.submit(self.download_file, f, base_path))
-            total_files = len(futures)
-            completed_counter = 0
             for future in as_completed(futures):
                 future.result()
                 futures.remove(future)
-                completed_counter += 1
-                if total_files - completed_counter % 100 == 0:
+                files_remaining = len(futures)
+                if files_remaining % 100 == 0 and files_remaining > 0:
                     logger.info(f"({self.drive_id}) Files remaining: {len(futures)}")
 
     def download_file(self, file, base_path):
