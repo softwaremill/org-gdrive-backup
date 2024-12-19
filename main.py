@@ -127,8 +127,6 @@ def main():
     logger.debug(f"Whiltelist: {SETTINGS.DRIVE_WHITELIST}")
     logger.debug(f"Drives initialized: {drives}")
 
-    logger.error(SETTINGS.DRIVE_WHITELIST)
-
     if len(SETTINGS.DRIVE_WHITELIST) == 0:
         logger.warning("No whitelist specified, processing all drives")
     else:
