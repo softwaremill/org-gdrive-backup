@@ -1,4 +1,4 @@
-from enum import Enum, auto
+from enum import Enum
 
 class STORAGE_CLASS(Enum):
     STANDARD = "STANDARD"

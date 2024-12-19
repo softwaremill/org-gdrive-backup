@@ -21,10 +21,10 @@ class GAdmin:
             self.shared_drives.extend(response.get("drives", []))
             request = service.drives().list_next(request, response)
 
-    def fetch_user_list(self):
+    def fetch_user_list(self, page_size=100, order_by="email"):
         self.users.clear()
         service = build("admin", "directory_v1", credentials=self.credentials)
-        request = service.users().list(customer=self.workspace_customer_id, maxResults=100, orderBy="email")
+        request = service.users().list(customer=self.workspace_customer_id, maxResults=page_size, orderBy=order_by)
         while request is not None:
             response = request.execute()
             self.users.extend(response.get("users", []))

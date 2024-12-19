@@ -12,12 +12,17 @@ class S3:
         if not os.path.isdir(source_path):
             raise ValueError(f"{source_path} is not a directory")
         
+        file_size_counter = 0
+        
         for root, _, files in os.walk(source_path):
             for file in files:
+                file_size_counter += os.path.getsize(os.path.join(root, file))
                 file_path = os.path.join(root, file)
                 key = f"{destination_path}{file_path.replace(source_path, '')}"
                 self.s3.upload_file(file_path, self.bucket_name, key, ExtraArgs={"StorageClass": storage_class.value})
                 logger.trace(f"Uploaded {file_path} to {key}")
+        
+        return file_size_counter
 
     def upload_file(self, source_path, destination_path, storage_class: STORAGE_CLASS = STORAGE_CLASS.STANDARD):
         if not os.path.isfile(source_path):

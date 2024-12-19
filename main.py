@@ -9,7 +9,7 @@ from typing import Any, List, Tuple, Type
 from google.oauth2.service_account import Credentials
 
 from src.google.gadmin import GAdmin
-from src.google.gdrive import GDrive
+from src.google.gdrive import GDrive, DRIVE_TYPE
 from src.aws.s3 import S3
 from src.utils.compressor import Compressor
 from src.utils.logger import app_logger as logger
@@ -50,8 +50,10 @@ def upload_files_to_s3(drive_id, downloads_path, timestamp):
     s3 = S3(SETTINGS.S3_BUCKET_NAME, SETTINGS.S3_ACCESS_KEY, SETTINGS.S3_SECRET_KEY)
     logger.info(f"({drive_id}) Uploading files to S3")
     upload_time_start = time.time()
-    s3.upload_folder(downloads_path, f"{timestamp}/{drive_id}")
-    logger.info(f"({drive_id}) Files uploaded in {time.time() - upload_time_start:.2f}s")
+    upload_size = s3.upload_folder(downloads_path, f"{timestamp}/{drive_id}")
+    upload_size_mb = upload_size/1024/1024
+    upload_speed_mb = upload_size_mb/(time.time() - upload_time_start)
+    logger.info(f"({drive_id}) Files uploaded in {time.time() - upload_time_start:.2f}s ({upload_size_mb:.2f}MB, {upload_speed_mb:.2f}MB/s)")
 
 def process_drive(args):
     current_task = STATE.STARTING
@@ -102,8 +104,10 @@ def process_drive(args):
 
     except Exception as e:
         logger.error(f"({drive_id}) Error processing drive: {e}")
+        os.makedirs(f"{downloads_path}", exist_ok=True)
         with open(f"{downloads_path}/errors.txt", "a") as f:
             f.write(f"Error processing drive: {e}\n")
+        exit(1)
     finally:
         stop_event.set()
         status_thread.join()
@@ -120,9 +124,9 @@ def main():
 
     drives = []
     for drive_name in users:
-        drives.append(GDrive(drive_name, get_credentials(drive_name), "user"))
+        drives.append(GDrive(drive_name, get_credentials(drive_name), DRIVE_TYPE.USER))
     for drive_name in shared_drives:
-        drives.append(GDrive(drive_name, admin_credentials, "shared"))
+        drives.append(GDrive(drive_name, admin_credentials, DRIVE_TYPE.SHARED))
 
     logger.debug(f"Whiltelist: {SETTINGS.DRIVE_WHITELIST}")
     logger.debug(f"Drives initialized: {drives}")

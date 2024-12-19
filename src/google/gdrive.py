@@ -3,7 +3,7 @@ from googleapiclient.discovery import build
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 from src.utils.logger import app_logger as logger
-
+from enum import Enum
 
 from typing import Literal
 import json
@@ -11,11 +11,15 @@ import os
 
 thread_local = threading.local()
 
+class DRIVE_TYPE(Enum):
+    USER = "user"
+    SHARED = "shared"
+
 class GDrive:
-    def __init__(self, drive_id: str, credentials: Credentials, type: Literal['user', 'shared']):
+    def __init__(self, drive_id: str, credentials: Credentials, drive_type: DRIVE_TYPE):
         self.drive_id = drive_id
         self.credentials = credentials
-        self.type = type
+        self.drive_type = drive_type
         self.files = []
         self.files_fetched = False
         self._file_export_handlers = {
@@ -28,7 +32,7 @@ class GDrive:
         }
 
     def __repr__(self) -> str:
-        return f"GDrive({self.drive_id}, {self.type})"
+        return f"GDrive({self.drive_id}, {self.drive_type})"
     
     def get_drive_service(self):
         if not hasattr(thread_local, "drive_service"):
@@ -65,19 +69,19 @@ class GDrive:
         return "/".join(reversed(file_path))
 
 
-    def fetch_file_list(self):
+    def fetch_file_list(self, page_size=100):
         drive_service = build('drive', 'v3', credentials=self.credentials)
         self.files = []
 
-        if self.type == 'user':
-            request = drive_service.files().list(pageSize=100, fields="nextPageToken, files(id, name, md5Checksum, parents, mimeType, shortcutDetails, permissions)")
+        if self.drive_type == DRIVE_TYPE.USER:
+            request = drive_service.files().list(pageSize=page_size, fields="nextPageToken, files(id, name, md5Checksum, parents, mimeType, shortcutDetails, permissions)")
             while request is not None:
                 response = request.execute()
                 self.files.extend(response.get("files", []))
                 request = drive_service.files().list_next(request, response)
-        elif self.type == 'shared':
+        elif self.drive_type == DRIVE_TYPE.SHARED:
             known_permissions = {}
-            request = drive_service.files().list(pageSize=100, fields="nextPageToken, files(id, name, md5Checksum, parents, mimeType, shortcutDetails, permissionIds)", corpora="drive", driveId=self.drive_id, includeItemsFromAllDrives=True, supportsAllDrives=True)
+            request = drive_service.files().list(pageSize=page_size, fields="nextPageToken, files(id, name, md5Checksum, parents, mimeType, shortcutDetails, permissionIds)", corpora="drive", driveId=self.drive_id, includeItemsFromAllDrives=True, supportsAllDrives=True)
             while request is not None:
                 response = request.execute()
                 self.files.extend(response.get("files", []))
