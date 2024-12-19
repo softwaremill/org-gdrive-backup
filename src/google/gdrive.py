@@ -18,7 +18,7 @@ class GDrive:
         self.type = type
         self.files = []
         self.files_fetched = False
-        self._handler_functions = {
+        self._file_export_handlers = {
             "application/vnd.google-apps.shortcut": self._handle_shortcut_export,
             "application/vnd.google-apps.document": self._handle_document_export,
             "application/vnd.google-apps.spreadsheet": self._handle_spreadsheet_export,
@@ -135,8 +135,14 @@ class GDrive:
             futures = []
             for f in self.files:
                 futures.append(executor.submit(self.download_file, f, base_path))
+            total_files = len(futures)
+            completed_counter = 0
             for future in as_completed(futures):
                 future.result()
+                futures.remove(future)
+                completed_counter += 1
+                if total_files - completed_counter % 100 == 0:
+                    logger.info(f"({self.drive_id}) Files remaining: {len(futures)}")
 
     def download_file(self, file, base_path):
         try:
@@ -162,9 +168,9 @@ class GDrive:
         drive_service = self.get_drive_service()
         new_file_path = f"{base_path}/{file['path']}/{file['name']}"
 
-        handler = self._handler_functions.get(file['mimeType'], None)
-        if handler is not None:
-            handler(file, drive_service, new_file_path)
+        export_handler = self._file_export_handlers.get(file['mimeType'], None)
+        if export_handler is not None:
+            export_handler(file, drive_service, new_file_path)
         else:
             with open(f"{base_path}/errors.txt", "a") as f:
                 logger.warning(f"Unknown file type: {file['mimeType']} ({file['id']})")
