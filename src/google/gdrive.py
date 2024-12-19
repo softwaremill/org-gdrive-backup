@@ -38,16 +38,6 @@ class GDrive:
         if not hasattr(thread_local, "drive_service"):
             thread_local.drive_service = build('drive', 'v3', credentials=self.credentials)
         return thread_local.drive_service
-
-
-    def get_file_list(self):
-        return self.files
-    
-    def get_file_list_length(self):
-        return len(self.files)
-    
-    def get_drive_id(self):
-        return self.drive_id
     
     def fetch_file_path(self, file_id: str, drive_service, supportsAllDrives=False):
         file_path = []

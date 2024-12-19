@@ -29,13 +29,13 @@ def get_credentials(subject):
     return Credentials.from_service_account_file(SETTINGS.SERVICE_ACCOUNT_FILE, scopes=SCOPES).with_subject(subject)
 
 def download_files_from_drive(drive, metadata_path, files_path):
-    drive_id = drive.get_drive_id()
+    drive_id = drive.drive_id
     drive.fetch_file_list()
-    logger.debug(f"({drive_id}) Files found: {drive.get_file_list_length()}")
+    logger.debug(f"({drive_id}) Files found: {len(drive.files)}")
     drive.dump_file_list(metadata_path)
     logger.info(f"({drive_id}) File list saved to {metadata_path}")
     
-    logger.info(f"({drive_id}) Downloading {drive.get_file_list_length()} files")
+    logger.info(f"({drive_id}) Downloading {len(drive.files)} files")
     drive.download_all_files(files_path, threads=SETTINGS.MAX_DOWNLOAD_THREADS)
     logger.info(f"({drive_id}) Files downloaded")
 
@@ -59,7 +59,7 @@ def process_drive(args):
     current_task = STATE.STARTING
     drive, current_timestamp = args
     start_time = time.time()
-    drive_id = drive.get_drive_id()
+    drive_id = drive.drive_id
     downloads_path = f"downloads/{current_timestamp}/{drive_id}"
     metadata_path = f"{downloads_path}/files.json"
     files_path = f"{downloads_path}/files"
@@ -70,7 +70,7 @@ def process_drive(args):
             time.sleep(1)
             counter += 1
             if counter % 60 == 0 and current_task != STATE.DONE:
-                logger.info(f"({drive_id}) Current status: {current_task.value}. Files found: {drive.get_file_list_length()}. Time elapsed: {time.time() - start_time:.2f}s")
+                logger.info(f"({drive_id}) Current status: {current_task.value}. Files found: {len(drive.files)}. Time elapsed: {time.time() - start_time:.2f}s")
 
     stop_event = threading.Event()
     status_thread = threading.Thread(target=print_status, daemon=True)
@@ -82,7 +82,7 @@ def process_drive(args):
         current_task = STATE.DOWNLOADING
         download_files_from_drive(drive, metadata_path, files_path)
 
-        file_count = len(drive.get_file_list())
+        file_count = len(drive.files)
 
         if SETTINGS.COMPRESS_DRIVES and file_count > 0:
             current_task = STATE.COMPRESSING
@@ -99,7 +99,7 @@ def process_drive(args):
             logger.warning(f"({drive_id}) No files found, skipping upload")
             
         current_task = STATE.DONE
-        logger.info(f"({drive_id}) Drive processed in {time.time() - start_time:.2f}s ({drive.get_file_list_length()} files)")
+        logger.info(f"({drive_id}) Drive processed in {time.time() - start_time:.2f}s ({len(drive.files)} files)")
         
 
     except Exception as e:
@@ -134,7 +134,7 @@ def main():
     if len(SETTINGS.DRIVE_WHITELIST) == 0:
         logger.warning("No whitelist specified, processing all drives")
     else:
-        drives = [drive for drive in drives if drive.get_drive_id() in SETTINGS.DRIVE_WHITELIST]
+        drives = [drive for drive in drives if drive.drive_id in SETTINGS.DRIVE_WHITELIST]
 
     logger.info(f"Drives to process: {drives}")
 
