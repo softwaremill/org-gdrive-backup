@@ -1,11 +1,8 @@
 import os.path
 import random
 import time
-from multiprocessing import Pool, cpu_count
 import threading
-from pydantic import Field, EmailStr, field_validator
-from pydantic_settings import BaseSettings
-from typing import Any, List, Tuple, Type
+from multiprocessing import Pool
 from google.oauth2.service_account import Credentials
 
 from src.google.gadmin import GAdmin
