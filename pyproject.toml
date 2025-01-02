@@ -1,0 +1,17 @@
+[project]
+name = "org-gdrive-backup"
+version = "0.1.0"
+description = "This project is a simple Python script that backs up all Google Drives in a Google Workspace domain. "
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "boto3>=1.35.90",
+    "email-validator>=2.2.0",
+    "google-api-core>=2.24.0",
+    "google-api-python-client>=2.156.0",
+    "google-auth>=2.37.0",
+    "loguru>=0.7.3",
+    "pydantic>=2.10.4",
+    "pydantic-settings>=2.7.1",
+    "tqdm>=4.67.1",
+]
