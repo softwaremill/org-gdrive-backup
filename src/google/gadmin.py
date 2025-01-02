@@ -24,7 +24,9 @@ class GAdmin:
     def _fetch_user_list(self, page_size=100, order_by="email"):
         self.users.clear()
         service = build("admin", "directory_v1", credentials=self.credentials)
-        request = service.users().list(customer=self.workspace_customer_id, maxResults=page_size, orderBy=order_by)
+        request = service.users().list(
+            customer=self.workspace_customer_id, maxResults=page_size, orderBy=order_by
+        )
         while request is not None:
             response = request.execute()
             self.users.extend(response.get("users", []))
@@ -34,9 +36,8 @@ class GAdmin:
         if not self._users_fetched:
             self._fetch_user_list()
         return self.users
-    
+
     def get_shared_drives(self):
         if not self._shared_drives_fetched:
             self._fetch_shared_drives()
         return self.shared_drives
-        

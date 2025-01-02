@@ -10,9 +10,11 @@ import os
 
 thread_local = threading.local()
 
+
 class DRIVE_TYPE(Enum):
     USER = "user"
     SHARED = "shared"
+
 
 class GDrive:
     def __init__(self, drive_id: str, credentials: Credentials, drive_type: DRIVE_TYPE):
@@ -27,39 +29,56 @@ class GDrive:
             "application/vnd.google-apps.spreadsheet": self._handle_spreadsheet_export,
             "application/vnd.google-apps.presentation": self._handle_presentation_export,
             "application/vnd.google-apps.drawing": self._handle_drawing_export,
-            "application/vnd.google-apps.script": self._handle_script_export
+            "application/vnd.google-apps.script": self._handle_script_export,
         }
 
     def __repr__(self) -> str:
         return f"GDrive({self.drive_id}, {self.drive_type})"
-    
+
     def get_drive_service(self):
         if not hasattr(thread_local, "drive_service"):
-            thread_local.drive_service = build('drive', 'v3', credentials=self.credentials)
+            thread_local.drive_service = build(
+                "drive", "v3", credentials=self.credentials
+            )
         return thread_local.drive_service
-    
+
     def fetch_file_path(self, file_id: str, drive_service, supportsAllDrives=False):
         file_path = []
-        f = drive_service.files().get(fileId=file_id, fields="id, name, parents", supportsAllDrives=supportsAllDrives).execute()
+        f = (
+            drive_service.files()
+            .get(
+                fileId=file_id,
+                fields="id, name, parents",
+                supportsAllDrives=supportsAllDrives,
+            )
+            .execute()
+        )
 
-        parents = f.get('parents', [])
+        parents = f.get("parents", [])
         while parents:
             parent_id = parents[0]
-            parent = drive_service.files().get(fileId=parent_id, fields="name, parents", supportsAllDrives=supportsAllDrives).execute()
-            #check if parent is a shared drive
+            parent = (
+                drive_service.files()
+                .get(
+                    fileId=parent_id,
+                    fields="name, parents",
+                    supportsAllDrives=supportsAllDrives,
+                )
+                .execute()
+            )
+            # check if parent is a shared drive
             if "parents" not in parent:
                 # get shared drive name
                 drive = drive_service.drives().get(driveId=parent_id).execute()
-                file_path.append(drive['name'])
+                file_path.append(drive["name"])
                 break
-            file_path.append(parent['name'])
-            parents = parent.get('parents', [])
+            file_path.append(parent["name"])
+            parents = parent.get("parents", [])
 
         return "/".join(reversed(file_path))
 
-
     def fetch_file_list(self, page_size=100):
-        drive_service = build('drive', 'v3', credentials=self.credentials)
+        drive_service = build("drive", "v3", credentials=self.credentials)
         self.files.clear()
 
         if self.drive_type == DRIVE_TYPE.USER:
@@ -73,15 +92,25 @@ class GDrive:
         self._files_fetched = True
 
     def _fetch_file_list_user_drive(self, drive_service, page_size):
-        request = drive_service.files().list(pageSize=page_size, fields="nextPageToken, files(id, name, md5Checksum, parents, mimeType, shortcutDetails, permissions)")
+        request = drive_service.files().list(
+            pageSize=page_size,
+            fields="nextPageToken, files(id, name, md5Checksum, parents, mimeType, shortcutDetails, permissions)",
+        )
         while request is not None:
             response = request.execute()
             self.files.extend(response.get("files", []))
             request = drive_service.files().list_next(request, response)
-    
+
     def _fetch_file_list_shared_drive(self, drive_service, page_size):
         known_permissions = {}
-        request = drive_service.files().list(pageSize=page_size, fields="nextPageToken, files(id, name, md5Checksum, parents, mimeType, shortcutDetails, permissionIds)", corpora="drive", driveId=self.drive_id, includeItemsFromAllDrives=True, supportsAllDrives=True)
+        request = drive_service.files().list(
+            pageSize=page_size,
+            fields="nextPageToken, files(id, name, md5Checksum, parents, mimeType, shortcutDetails, permissionIds)",
+            corpora="drive",
+            driveId=self.drive_id,
+            includeItemsFromAllDrives=True,
+            supportsAllDrives=True,
+        )
         while request is not None:
             response = request.execute()
             self.files.extend(response.get("files", []))
@@ -93,10 +122,18 @@ class GDrive:
                     if permission_id in known_permissions:
                         f["permissions"].append(known_permissions[permission_id])
                     else:
-                        permission = drive_service.permissions().get(fileId=f["id"], permissionId=permission_id, fields="id, displayName, type, kind, emailAddress, role", supportsAllDrives=True).execute()
+                        permission = (
+                            drive_service.permissions()
+                            .get(
+                                fileId=f["id"],
+                                permissionId=permission_id,
+                                fields="id, displayName, type, kind, emailAddress, role",
+                                supportsAllDrives=True,
+                            )
+                            .execute()
+                        )
                         f["permissions"].append(permission)
                         known_permissions[permission_id] = permission
-        
 
     def find_file_by_id(self, file_id: str):
         for f in self.files:
@@ -117,7 +154,7 @@ class GDrive:
             file_path.append(parent["name"])
             f = parent
         return "/".join(reversed(file_path))
-                
+
     def dump_file_list(self, path):
         if not self._files_fetched:
             self.fetch_file_list()
@@ -143,13 +180,15 @@ class GDrive:
 
     def download_file(self, file, base_path):
         try:
-            if 'md5Checksum' in file:
+            if "md5Checksum" in file:
                 self.download_binary_file(file, base_path)
             else:
                 self.export_file(file, base_path)
         except Exception as e:
             with open(f"{base_path}/errors.txt", "a") as f:
-                logger.error(f"Error downloading file {file['name']} ({file['id']}, (drive: {self.drive_id})): {e}")
+                logger.error(
+                    f"Error downloading file {file['name']} ({file['id']}, (drive: {self.drive_id})): {e}"
+                )
                 f.write(f"Error downloading file {file['name']} ({file['id']}): {e}\n")
 
     def download_binary_file(self, file, base_path):
@@ -159,47 +198,62 @@ class GDrive:
         self.write_request_to_file(request, new_file_path)
 
     def export_file(self, file, base_path):
-        if file['mimeType'] == "application/vnd.google-apps.folder":
+        if file["mimeType"] == "application/vnd.google-apps.folder":
             return
-        
+
         drive_service = self.get_drive_service()
         new_file_path = f"{base_path}/{file['path']}/{file['name']}"
 
-        export_handler = self._file_export_handlers.get(file['mimeType'], None)
+        export_handler = self._file_export_handlers.get(file["mimeType"], None)
         if export_handler is not None:
             export_handler(file, drive_service, new_file_path)
         else:
             with open(f"{base_path}/errors.txt", "a") as f:
                 logger.warning(f"Unknown file type: {file['mimeType']} ({file['id']})")
                 f.write(f"Unknown file type: {file['mimeType']} ({file['id']})\n")
-                
+
     def write_request_to_file(self, request, file_path):
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, "wb") as f:
             f.write(request.execute())
 
     def _handle_shortcut_export(self, file, drive_service, new_file_path):
-        original_file = file['shortcutDetails']['targetId']
-        original_file_path = self.fetch_file_path(original_file, drive_service, supportsAllDrives=True)
+        original_file = file["shortcutDetails"]["targetId"]
+        original_file_path = self.fetch_file_path(
+            original_file, drive_service, supportsAllDrives=True
+        )
         with open(f"{new_file_path}.lnk.txt", "w") as f:
             f.write(original_file_path)
 
     def _handle_document_export(self, file, drive_service, new_file_path):
-        request = drive_service.files().export_media(fileId=file['id'], mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+        request = drive_service.files().export_media(
+            fileId=file["id"],
+            mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
         self.write_request_to_file(request, f"{new_file_path}.docx")
-    
+
     def _handle_spreadsheet_export(self, file, drive_service, new_file_path):
-        request = drive_service.files().export_media(fileId=file['id'], mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        request = drive_service.files().export_media(
+            fileId=file["id"],
+            mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
         self.write_request_to_file(request, f"{new_file_path}.xlsx")
-    
+
     def _handle_presentation_export(self, file, drive_service, new_file_path):
-        request = drive_service.files().export_media(fileId=file['id'], mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation")
+        request = drive_service.files().export_media(
+            fileId=file["id"],
+            mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        )
         self.write_request_to_file(request, f"{new_file_path}.pptx")
-    
+
     def _handle_drawing_export(self, file, drive_service, new_file_path):
-        request = drive_service.files().export_media(fileId=file['id'], mimeType="application/pdf")
+        request = drive_service.files().export_media(
+            fileId=file["id"], mimeType="application/pdf"
+        )
         self.write_request_to_file(request, f"{new_file_path}.pdf")
 
     def _handle_script_export(self, file, drive_service, new_file_path):
-        request = drive_service.files().export_media(fileId=file['id'], mimeType="application/vnd.google-apps.script+json")
+        request = drive_service.files().export_media(
+            fileId=file["id"], mimeType="application/vnd.google-apps.script+json"
+        )
         self.write_request_to_file(request, f"{new_file_path}.json")

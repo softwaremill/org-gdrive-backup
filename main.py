@@ -15,15 +15,20 @@ from src.enums import STATE
 
 
 SETTINGS = Settings()
-SCOPES = ["https://www.googleapis.com/auth/admin.directory.user.readonly", 
-          "https://www.googleapis.com/auth/drive.metadata.readonly",
-          "https://www.googleapis.com/auth/drive.readonly"]
+SCOPES = [
+    "https://www.googleapis.com/auth/admin.directory.user.readonly",
+    "https://www.googleapis.com/auth/drive.metadata.readonly",
+    "https://www.googleapis.com/auth/drive.readonly",
+]
 
 random.seed(time.time())
 
 
 def get_credentials(subject):
-    return Credentials.from_service_account_file(SETTINGS.SERVICE_ACCOUNT_FILE, scopes=SCOPES).with_subject(subject)
+    return Credentials.from_service_account_file(
+        SETTINGS.SERVICE_ACCOUNT_FILE, scopes=SCOPES
+    ).with_subject(subject)
+
 
 def download_files_from_drive(drive, metadata_path, files_path):
     drive_id = drive.drive_id
@@ -31,26 +36,35 @@ def download_files_from_drive(drive, metadata_path, files_path):
     logger.debug(f"({drive_id}) Files found: {len(drive.files)}")
     drive.dump_file_list(metadata_path)
     logger.info(f"({drive_id}) File list saved to {metadata_path}")
-    
+
     logger.info(f"({drive_id}) Downloading {len(drive.files)} files")
     drive.download_all_files(files_path, threads=SETTINGS.MAX_DOWNLOAD_THREADS)
     logger.info(f"({drive_id}) Files downloaded")
 
+
 def compress_files_from_drive(drive_id, files_path):
     logger.info(f"({drive_id}) Compressing files")
     compress_time_start = time.time()
-    compressor = Compressor(SETTINGS.COMPRESSION_ALGORITHM, max_processes=SETTINGS.COMPRESSION_PROCESSES)
+    compressor = Compressor(
+        SETTINGS.COMPRESSION_ALGORITHM, max_processes=SETTINGS.COMPRESSION_PROCESSES
+    )
     _, tar_size = compressor.compress_folder(files_path, delete_original=True)
-    logger.info(f"({drive_id}) Files compressed in {time.time() - compress_time_start:.2f}s ({tar_size/1024/1024:.2f}MB)")
+    logger.info(
+        f"({drive_id}) Files compressed in {time.time() - compress_time_start:.2f}s ({tar_size/1024/1024:.2f}MB)"
+    )
+
 
 def upload_files_to_s3(drive_id, downloads_path, timestamp):
     s3 = S3(SETTINGS.S3_BUCKET_NAME, SETTINGS.S3_ACCESS_KEY, SETTINGS.S3_SECRET_KEY)
     logger.info(f"({drive_id}) Uploading files to S3")
     upload_time_start = time.time()
     upload_size = s3.upload_folder(downloads_path, f"{timestamp}/{drive_id}")
-    upload_size_mb = upload_size/1024/1024
-    upload_speed_mb = upload_size_mb/(time.time() - upload_time_start)
-    logger.info(f"({drive_id}) Files uploaded in {time.time() - upload_time_start:.2f}s ({upload_size_mb:.2f}MB, {upload_speed_mb:.2f}MB/s)")
+    upload_size_mb = upload_size / 1024 / 1024
+    upload_speed_mb = upload_size_mb / (time.time() - upload_time_start)
+    logger.info(
+        f"({drive_id}) Files uploaded in {time.time() - upload_time_start:.2f}s ({upload_size_mb:.2f}MB, {upload_speed_mb:.2f}MB/s)"
+    )
+
 
 def process_drive(args):
     current_task = STATE.STARTING
@@ -67,7 +81,9 @@ def process_drive(args):
             time.sleep(1)
             counter += 1
             if counter % 60 == 0 and current_task != STATE.DONE:
-                logger.info(f"({drive_id}) Current status: {current_task.value}. Files found: {len(drive.files)}. Time elapsed: {time.time() - start_time:.2f}s")
+                logger.info(
+                    f"({drive_id}) Current status: {current_task.value}. Files found: {len(drive.files)}. Time elapsed: {time.time() - start_time:.2f}s"
+                )
 
     stop_event = threading.Event()
     status_thread = threading.Thread(target=print_status, daemon=True)
@@ -75,7 +91,7 @@ def process_drive(args):
 
     try:
         logger.info(f"({drive_id}) Processing drive")
-        
+
         current_task = STATE.DOWNLOADING
         download_files_from_drive(drive, metadata_path, files_path)
 
@@ -94,10 +110,11 @@ def process_drive(args):
             upload_files_to_s3(drive_id, downloads_path, current_timestamp)
         else:
             logger.warning(f"({drive_id}) No files found, skipping upload")
-            
+
         current_task = STATE.DONE
-        logger.info(f"({drive_id}) Drive processed in {time.time() - start_time:.2f}s ({len(drive.files)} files)")
-        
+        logger.info(
+            f"({drive_id}) Drive processed in {time.time() - start_time:.2f}s ({len(drive.files)} files)"
+        )
 
     except Exception as e:
         logger.error(f"({drive_id}) Error processing drive: {e}")
@@ -131,12 +148,16 @@ def main():
     if len(SETTINGS.DRIVE_WHITELIST) == 0:
         logger.warning("No whitelist specified, processing all drives")
     else:
-        drives = [drive for drive in drives if drive.drive_id in SETTINGS.DRIVE_WHITELIST]
+        drives = [
+            drive for drive in drives if drive.drive_id in SETTINGS.DRIVE_WHITELIST
+        ]
 
     logger.info(f"Drives to process: {drives}")
 
-    random.shuffle(drives) # In case of failure, every backup will have some unique data
-    
+    random.shuffle(
+        drives
+    )  # In case of failure, every backup will have some unique data
+
     with Pool(processes=SETTINGS.MAX_DRIVE_PROCESSES) as pool:
         current_timestamp = time.strftime("%Y%m%d-%H%M%S")
         logger.debug(f"Current timestamp: {current_timestamp}")

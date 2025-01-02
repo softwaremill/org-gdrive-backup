@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class STORAGE_CLASS(Enum):
     STANDARD = "STANDARD"
     STANDARD_IA = "STANDARD_IA"
@@ -7,6 +8,7 @@ class STORAGE_CLASS(Enum):
     INTELLIGENT_TIERING = "INTELLIGENT_TIERING"
     GLACIER = "GLACIER"
     DEEP_ARCHIVE = "DEEP_ARCHIVE"
+
 
 class STATE(Enum):
     STARTING = "STARTING"
