@@ -24,8 +24,8 @@ jobs:
         uses: 'google-github-actions/setup-gcloud@v2'
       - name: Build container
         run: |
-          docker build -t ${ARTIFACT_REGISTRY}/${PROJECT_ID}/org-gdrive-backup/org-gdrive-backup:${GITHUB_RUN_NUMBER} .          
+          docker build -t ${ARTIFACT_REGISTRY}/${PROJECT_ID}/org-gdrive-backup/org-gdrive-backup:${GITHUB_RUN_NUMBER} .
       - name: Push container
         run: |
           gcloud auth configure-docker europe-west2-docker.pkg.dev
-          docker push ${ARTIFACT_REGISTRY}/${PROJECT_ID}/org-gdrive-backup/org-gdrive-backup:${GITHUB_RUN_NUMBER}    
+          docker push ${ARTIFACT_REGISTRY}/${PROJECT_ID}/org-gdrive-backup/org-gdrive-backup:${GITHUB_RUN_NUMBER}
