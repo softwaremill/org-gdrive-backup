@@ -35,7 +35,7 @@ class GDrive:
     def __repr__(self) -> str:
         return f"GDrive({self.drive_id}, {self.drive_type})"
 
-    def get_drive_service(self):
+    def _get_drive_service(self):
         if not hasattr(thread_local, "drive_service"):
             thread_local.drive_service = build(
                 "drive", "v3", credentials=self.credentials
@@ -195,7 +195,7 @@ class GDrive:
                 f.write(f"Error downloading file {file['name']} ({file['id']}): {e}\n")
 
     def download_binary_file(self, file, base_path):
-        drive_service = self.get_drive_service()
+        drive_service = self._get_drive_service()
         request = drive_service.files().get_media(fileId=file["id"])
         new_file_path = f"{base_path}/{file['path']}/{file['name']}"
         self.write_request_to_file(request, new_file_path)
@@ -204,7 +204,7 @@ class GDrive:
         if file["mimeType"] == "application/vnd.google-apps.folder":
             return
 
-        drive_service = self.get_drive_service()
+        drive_service = self._get_drive_service()
         new_file_path = f"{base_path}/{file['path']}/{file['name']}"
 
         export_handler = self._file_export_handlers.get(file["mimeType"], None)
