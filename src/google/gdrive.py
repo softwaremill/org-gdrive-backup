@@ -86,10 +86,11 @@ class GDrive:
         elif self.drive_type == DRIVE_TYPE.SHARED:
             self._fetch_file_list_shared_drive(drive_service, page_size)
 
+        self._files_fetched = True
+
         for i, f in enumerate(self.files):
             f["path"] = self.build_file_path(f["id"])
             self.files[i] = f
-        self._files_fetched = True
 
     def _fetch_file_list_user_drive(self, drive_service, page_size):
         request = drive_service.files().list(
