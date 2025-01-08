@@ -136,6 +136,8 @@ class GDrive:
                         known_permissions[permission_id] = permission
 
     def find_file_by_id(self, file_id: str):
+        if not self._files_fetched:
+            self.fetch_file_list()
         for f in self.files:
             if f["id"] == file_id:
                 return f
