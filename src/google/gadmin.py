@@ -31,6 +31,7 @@ class GAdmin:
             response = request.execute()
             self.users.extend(response.get("users", []))
             request = service.users().list_next(request, response)
+        self._users_fetched = True
 
     def get_user_list(self):
         if not self._users_fetched:
