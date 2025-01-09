@@ -26,6 +26,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     name: Build OCI image
+    needs: tests
     steps:
       - name: Checkout
         uses: actions/checkout@v4
