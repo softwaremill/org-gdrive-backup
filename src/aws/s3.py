@@ -5,7 +5,7 @@ from src.enums import STORAGE_CLASS
 
 
 class S3:
-    def __init__(self, bucket_name, access_key, secret_key):
+    def __init__(self, bucket_name: str, access_key: str, secret_key: str) -> None:
         self.bucket_name = bucket_name
         self.s3 = boto3.client(
             "s3", aws_access_key_id=access_key, aws_secret_access_key=secret_key
@@ -13,10 +13,10 @@ class S3:
 
     def upload_folder(
         self,
-        source_path,
-        destination_path,
+        source_path: str,
+        destination_path: str,
         storage_class: STORAGE_CLASS = STORAGE_CLASS.STANDARD,
-    ):
+    ) -> int:
         if not os.path.isdir(source_path):
             raise ValueError(f"{source_path} is not a directory")
 
@@ -43,10 +43,10 @@ class S3:
 
     def upload_file(
         self,
-        source_path,
-        destination_path,
+        source_path: str,
+        destination_path: str,
         storage_class: STORAGE_CLASS = STORAGE_CLASS.STANDARD,
-    ):
+    ) -> None:
         if not os.path.isfile(source_path):
             raise ValueError(f"{source_path} is not a file")
         try:

@@ -4,6 +4,7 @@ import time
 import threading
 from multiprocessing import Pool
 from google.oauth2.service_account import Credentials
+from typing import Tuple
 
 from src.google.gadmin import GAdmin
 from src.google.gdrive import GDrive, DRIVE_TYPE
@@ -24,13 +25,15 @@ SCOPES = [
 random.seed(time.time())
 
 
-def get_credentials(subject):
+def get_credentials(subject: str) -> Credentials:
     return Credentials.from_service_account_file(
         SETTINGS.SERVICE_ACCOUNT_FILE, scopes=SCOPES
     ).with_subject(subject)
 
 
-def download_files_from_drive(drive, metadata_path, files_path):
+def download_files_from_drive(
+    drive: GDrive, metadata_path: str, files_path: str
+) -> None:
     drive_id = drive.drive_id
     drive.fetch_file_list()
     logger.debug(f"({drive_id}) Files found: {len(drive.files)}")
@@ -42,7 +45,7 @@ def download_files_from_drive(drive, metadata_path, files_path):
     logger.info(f"({drive_id}) Files downloaded")
 
 
-def compress_files_from_drive(drive_id, files_path):
+def compress_files_from_drive(drive_id: str, files_path: str) -> None:
     logger.info(f"({drive_id}) Compressing files")
     compress_time_start = time.time()
     compressor = Compressor(
@@ -54,7 +57,7 @@ def compress_files_from_drive(drive_id, files_path):
     )
 
 
-def upload_files_to_s3(drive_id, downloads_path, timestamp):
+def upload_files_to_s3(drive_id: str, downloads_path: str, timestamp: str) -> None:
     s3 = S3(SETTINGS.S3_BUCKET_NAME, SETTINGS.S3_ACCESS_KEY, SETTINGS.S3_SECRET_KEY)
     logger.info(f"({drive_id}) Uploading files to S3")
     upload_time_start = time.time()
@@ -66,7 +69,7 @@ def upload_files_to_s3(drive_id, downloads_path, timestamp):
     )
 
 
-def process_drive(args):
+def process_drive(args: Tuple[GDrive, str]) -> None:
     current_task = STATE.STARTING
     drive, current_timestamp = args
     start_time = time.time()
@@ -162,7 +165,7 @@ def main():
         current_timestamp = time.strftime("%Y%m%d-%H%M%S")
         logger.debug(f"Current timestamp: {current_timestamp}")
 
-        args = [(drive, current_timestamp) for drive in drives]
+        args: Tuple[GDrive, str] = [(drive, current_timestamp) for drive in drives]
         for _ in pool.imap_unordered(process_drive, args):
             pass
 

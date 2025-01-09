@@ -1,6 +1,10 @@
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
 from functools import cache
+from typing import List, Dict, Any, TypeAlias
+
+GUser: TypeAlias = Dict[str, Any]
+GSharedDrive: TypeAlias = Dict[str, Any]
 
 
 class GAdmin:
@@ -10,7 +14,7 @@ class GAdmin:
         self.workspace_customer_id = workspace_customer_id
         self.credentials = credentials
 
-    def _fetch_shared_drives(self):
+    def _fetch_shared_drives(self) -> List[GSharedDrive]:
         service = build("drive", "v3", credentials=self.credentials)
         request = service.drives().list()
         while request is not None:
@@ -19,7 +23,9 @@ class GAdmin:
             request = service.drives().list_next(request, response)
         return self.shared_drives
 
-    def _fetch_user_list(self, page_size=100, order_by="email"):
+    def _fetch_user_list(
+        self, page_size: int = 100, order_by: str = "email"
+    ) -> List[GUser]:
         service = build("admin", "directory_v1", credentials=self.credentials)
         request = service.users().list(
             customer=self.workspace_customer_id, maxResults=page_size, orderBy=order_by
@@ -31,9 +37,9 @@ class GAdmin:
         return self.users
 
     @cache
-    def get_user_list(self):
+    def get_user_list(self) -> List[GUser]:
         return self._fetch_user_list()
 
     @cache
-    def get_shared_drives(self):
+    def get_shared_drives(self) -> List[GSharedDrive]:
         return self._fetch_shared_drives()

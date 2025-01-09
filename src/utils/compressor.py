@@ -1,17 +1,18 @@
 import os
 import shutil
+from typing import Tuple, Union
 
 
 class Compressor:
-    def __init__(self, algorithm, max_processes=1):
+    def __init__(self, algorithm: str, max_processes: int = 1) -> None:
         self.algorithm = algorithm
         self.max_processes = max_processes
 
     def compress_folder(
         self,
-        path,
-        delete_original=False,
-    ):
+        path: Union[str, os.PathLike],
+        delete_original: bool = False,
+    ) -> Tuple[str, int]:
         if not os.path.isdir(path):
             raise ValueError(f"{path} is not a directory")
 
