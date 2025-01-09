@@ -22,6 +22,13 @@ jobs:
           credentials_json: '${{ secrets.GCP_SA_KEY }}'
       - name: 'Set up Cloud SDK'
         uses: 'google-github-actions/setup-gcloud@v2'
+      - name: 'Run Tests'
+        run: |
+          export UV_ENV=ci
+          apt-get update && apt-get install -y gzip pigz lz4
+          uv sync --frozen
+          source .venv/bin/activate
+          python3 -m unittest discover -s tests
       - name: Build container
         run: |
           docker build -t ${ARTIFACT_REGISTRY}/${PROJECT_ID}/org-gdrive-backup/org-gdrive-backup:${GITHUB_RUN_NUMBER} .
