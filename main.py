@@ -144,7 +144,7 @@ def main():
     for drive_name in shared_drives:
         drives.append(GDrive(drive_name, admin_credentials, DRIVE_TYPE.SHARED))
 
-    logger.debug(f"Whiltelist: {SETTINGS.DRIVE_WHITELIST}")
+    logger.info(f"Whitelist: {SETTINGS.DRIVE_WHITELIST}")
     logger.debug(f"Drives initialized: {drives}")
 
     if len(SETTINGS.DRIVE_WHITELIST) == 0:
