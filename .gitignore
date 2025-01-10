@@ -167,6 +167,7 @@ metadata/*
 files/*
 downloads/*
 service-account-key.json
+service-account-key.*.json
 
 .vscode/*
 

@@ -18,7 +18,6 @@ from src.enums import STATE
 SETTINGS = Settings()
 SCOPES = [
     "https://www.googleapis.com/auth/admin.directory.user.readonly",
-    "https://www.googleapis.com/auth/drive.metadata.readonly",
     "https://www.googleapis.com/auth/drive.readonly",
 ]
 

@@ -34,6 +34,7 @@ class GDrive:
             "application/vnd.google-apps.presentation": self._handle_presentation_export,
             "application/vnd.google-apps.drawing": self._handle_drawing_export,
             "application/vnd.google-apps.script": self._handle_script_export,
+            "application/vnd.google-apps.form": self._handle_zip_export,
         }
 
     def __repr__(self) -> str:
@@ -83,7 +84,7 @@ class GDrive:
 
         return "/".join(reversed(file_path))
 
-    def fetch_file_list(self, page_size: int = 100) -> None:
+    def fetch_file_list(self, page_size: int = 1000) -> None:
         drive_service = build("drive", "v3", credentials=self.credentials)
         self.files.clear()
 
@@ -282,3 +283,11 @@ class GDrive:
             fileId=file["id"], mimeType="application/vnd.google-apps.script+json"
         )
         self.write_request_to_file(request, f"{new_file_path}.json")
+
+    def _handle_zip_export(
+        self, file: GFile, drive_service: DriveService, new_file_path: str
+    ) -> None:
+        request = drive_service.files().export_media(
+            fileId=file["id"], mimeType="application/zip"
+        )
+        self.write_request_to_file(request, f"{new_file_path}.zip")
