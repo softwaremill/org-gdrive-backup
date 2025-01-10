@@ -1,5 +1,6 @@
 from google.oauth2.service_account import Credentials
 from googleapiclient.discovery import build
+from googleapiclient.http import MediaIoBaseDownload
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 from src.utils.logger import app_logger as logger
@@ -229,7 +230,10 @@ class GDrive:
     def write_request_to_file(self, request: Any, file_path: str) -> None:
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
         with open(file_path, "wb") as f:
-            f.write(request.execute())
+            downloader = MediaIoBaseDownload(f, request)
+            done = False
+            while not done:
+                _, done = downloader.next_chunk()
 
     def _handle_shortcut_export(
         self, file: GFile, drive_service: DriveService, new_file_path: str
