@@ -68,7 +68,7 @@ def upload_files_to_s3(drive_id: str, downloads_path: str, timestamp: str) -> No
     )
 
 
-def process_drive(args: Tuple[GDrive, str]) -> None:
+def process_drive(args: Tuple[GDrive, str]) -> bool:
     current_task = STATE.STARTING
     drive, current_timestamp = args
     start_time = time.time()
@@ -117,13 +117,14 @@ def process_drive(args: Tuple[GDrive, str]) -> None:
         logger.info(
             f"({drive_id}) Drive processed in {time.time() - start_time:.2f}s ({len(drive.files)} files)"
         )
+        return True
 
     except Exception as e:
         logger.error(f"({drive_id}) Error processing drive: {e}")
         os.makedirs(f"{downloads_path}", exist_ok=True)
         with open(f"{downloads_path}/errors.txt", "a") as f:
             f.write(f"Error processing drive: {e}\n")
-        exit(1)
+        return False
     finally:
         stop_event.set()
         status_thread.join()
@@ -164,9 +165,43 @@ def main():
         current_timestamp = time.strftime("%Y%m%d-%H%M%S")
         logger.debug(f"Current timestamp: {current_timestamp}")
 
+        total_drives = len(drives)
+        completed = 0
+        failed = 0
         args: Tuple[GDrive, str] = [(drive, current_timestamp) for drive in drives]
-        for _ in pool.imap_unordered(process_drive, args):
-            pass
+
+        try:
+            iterator = pool.imap_unordered(process_drive, args)
+            while True:
+                try:
+                    if next(iterator) is True:
+                        completed += 1
+                    else:
+                        failed += 1
+                        logger.error(
+                            f"A subprocess has failed. Failed: {failed}/{total_drives}"
+                        )
+                except StopIteration:
+                    break
+                except Exception as e:
+                    failed += 1
+                    logger.error(
+                        f"A subprocess was killed unexpectedly: {e}. Failed: {failed}/{total_drives}"
+                    )
+
+            logger.info(
+                f"All processes finished. Successful: {completed}, Failed: {failed}"
+            )
+            if failed == total_drives:
+                logger.error("All processes failed")
+                exit(1)
+            elif failed > 0:
+                logger.warning(f"Some processes failed ({failed}/{total_drives})")
+                exit(1)
+            exit(0)
+        finally:
+            pool.close()
+            pool.join()
 
 
 if __name__ == "__main__":
