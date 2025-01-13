@@ -31,6 +31,11 @@ class Compressor:
                 exit_code = os.system(
                     f"tar cf - -C {directory} {file_name} | pigz -p {self.max_processes} > {tar_path}"
                 )
+            case "pzstd":
+                tar_path = f"{directory}/{file_name}.tar.zst"
+                exit_code = os.system(
+                    f"tar cf - -C {directory} {file_name} | pzstd -{self.max_processes} > {tar_path}"
+                )
             case _:
                 raise NotImplementedError(
                     f"Compression algorithm {self.algorithm} not implemented"

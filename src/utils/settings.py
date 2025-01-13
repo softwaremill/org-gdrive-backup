@@ -50,7 +50,7 @@ class Settings(BaseSettings):
 
     @field_validator("COMPRESSION_ALGORITHM")
     def validate_compression_algorithm(cls, v, info):
-        if v not in ["pigz", "lz4"]:
+        if v not in ["pigz", "lz4", "pzstd"]:
             raise ValueError(f"{info.field_name} must be 'pigz' or 'lz4'")
         return v
 
