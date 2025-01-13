@@ -7,6 +7,7 @@ RUN apt-get update && apt-get install -y \
     pigz \
     pv \
     lz4 \
+    pzstd \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml pyproject.toml
