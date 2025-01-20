@@ -1,6 +1,7 @@
 env:
   PROJECT_ID: sml-gke-iac
-  ARTIFACT_REGISTRY: europe-west2-docker.pkg.dev
+  ARTIFACT_REGISTRY: 85008071989.dkr.ecr.eu-west-1.amazonaws.com
+  AWS_REGION: eu-west-1
 
 on:
   push:
@@ -16,7 +17,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: 'Run Tests'
+      - name: "Run Tests"
         run: |
           sudo apt-get update && sudo apt-get install -y gzip pigz lz4
           curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -30,16 +31,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - id: 'auth'
-        uses: 'google-github-actions/auth@v2'
+      - id: "auth"
+        uses: aws-actions/configure-aws-credentials@v3
         with:
-          credentials_json: '${{ secrets.GCP_SA_KEY }}'
-      - name: 'Set up Cloud SDK'
-        uses: 'google-github-actions/setup-gcloud@v2'
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Login to Amazon ECR
+        run: aws ecr get-login-password --region ${{ env.AWS_REGION}} | docker login --username AWS --password-stdin ${{ env.ARTIFACT_REGISTRY }}
       - name: Build container
         run: |
-          docker build -t ${ARTIFACT_REGISTRY}/${PROJECT_ID}/org-gdrive-backup/org-gdrive-backup:${GITHUB_RUN_NUMBER} .
+          docker build -t ${ARTIFACT_REGISTRY}/org-gdrive-backup:${GITHUB_RUN_NUMBER} .
       - name: Push container
         run: |
           gcloud auth configure-docker europe-west2-docker.pkg.dev
-          docker push ${ARTIFACT_REGISTRY}/${PROJECT_ID}/org-gdrive-backup/org-gdrive-backup:${GITHUB_RUN_NUMBER}
+          docker push ${ARTIFACT_REGISTRY}/org-gdrive-backup:${GITHUB_RUN_NUMBER}
