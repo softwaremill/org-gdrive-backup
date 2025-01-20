@@ -1,6 +1,6 @@
 env:
   PROJECT_ID: sml-gke-iac
-  ARTIFACT_REGISTRY: 85008071989.dkr.ecr.eu-west-1.amazonaws.com
+  ECR_URL: 85008071989.dkr.ecr.eu-west-1.amazonaws.com/org-gdrive-backup
   AWS_REGION: eu-west-1
 
 on:
@@ -38,11 +38,11 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
       - name: Login to Amazon ECR
-        run: aws ecr get-login-password --region ${{ env.AWS_REGION}} | docker login --username AWS --password-stdin ${{ env.ARTIFACT_REGISTRY }}
+        run: aws ecr get-login-password --region ${{ env.AWS_REGION}} | docker login --username AWS --password-stdin ${{ env.ECR_URL }}
       - name: Build container
         run: |
-          docker build -t ${ARTIFACT_REGISTRY}/org-gdrive-backup:${GITHUB_RUN_NUMBER} .
+          docker build -t ${ECR_URL}:${GITHUB_RUN_NUMBER} .
       - name: Push container
         run: |
           gcloud auth configure-docker europe-west2-docker.pkg.dev
-          docker push ${ARTIFACT_REGISTRY}/org-gdrive-backup:${GITHUB_RUN_NUMBER}
+          docker push ${ECR_URL}:${GITHUB_RUN_NUMBER}
