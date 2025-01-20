@@ -1,6 +1,6 @@
 env:
   PROJECT_ID: sml-gke-iac
-  ECR_URL: 85008071989.dkr.ecr.eu-west-1.amazonaws.com/org-gdrive-backup
+  ECR_URL: 585008071989.dkr.ecr.eu-west-1.amazonaws.com/org-gdrive-backup
   AWS_REGION: eu-west-1
 
 on:
