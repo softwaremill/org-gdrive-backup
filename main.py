@@ -80,6 +80,9 @@ def process_drive(args: Tuple[GDrive, str]) -> bool:
     metadata_path = f"{downloads_path}/files.json"
     files_path = f"{downloads_path}/files"
 
+    stop_event = threading.Event()
+    status_thread = None
+
     def print_status():
         counter = 0
         while not stop_event.is_set():
@@ -90,11 +93,10 @@ def process_drive(args: Tuple[GDrive, str]) -> bool:
                     f"({drive_id}) Current status: {current_task.value}. Files found: {len(drive.files)}. Time elapsed: {time.time() - start_time:.2f}s"
                 )
 
-    stop_event = threading.Event()
-    status_thread = threading.Thread(target=print_status, daemon=True)
-    status_thread.start()
-
     try:
+        status_thread = threading.Thread(target=print_status, daemon=True)
+        status_thread.start()
+
         logger.info(f"({drive_id}) Processing drive")
 
         current_task = STATE.DOWNLOADING
@@ -130,7 +132,8 @@ def process_drive(args: Tuple[GDrive, str]) -> bool:
         return False
     finally:
         stop_event.set()
-        status_thread.join()
+        if status_thread and status_thread.is_alive():
+            status_thread.join(timeout=1.0)
 
 
 def main():
@@ -164,47 +167,50 @@ def main():
         drives
     )  # In case of failure, every backup will have some unique data
 
-    with Pool(processes=SETTINGS.MAX_DRIVE_PROCESSES) as pool:
-        current_timestamp = time.strftime("%Y%m%d-%H%M%S")
-        logger.debug(f"Current timestamp: {current_timestamp}")
+    try:
+        with Pool(processes=SETTINGS.MAX_DRIVE_PROCESSES) as pool:
+            current_timestamp = time.strftime("%Y%m%d-%H%M%S")
+            logger.debug(f"Current timestamp: {current_timestamp}")
 
-        total_drives = len(drives)
-        completed = 0
-        failed = 0
-        args: Tuple[GDrive, str] = [(drive, current_timestamp) for drive in drives]
+            total_drives = len(drives)
+            completed = 0
+            failed = 0
+            args: Tuple[GDrive, str] = [(drive, current_timestamp) for drive in drives]
 
-        try:
-            iterator = pool.imap_unordered(process_drive, args)
-            while True:
-                try:
-                    if next(iterator) is True:
-                        completed += 1
-                    else:
+            try:
+                iterator = pool.imap_unordered(process_drive, args)
+                while True:
+                    try:
+                        if next(iterator) is True:
+                            completed += 1
+                        else:
+                            failed += 1
+                            logger.error(
+                                f"A subprocess has failed. Failed: {failed}/{total_drives}"
+                            )
+                    except StopIteration:
+                        break
+                    except Exception as e:
                         failed += 1
                         logger.error(
-                            f"A subprocess has failed. Failed: {failed}/{total_drives}"
+                            f"A subprocess was killed unexpectedly: {e}. Failed: {failed}/{total_drives}"
                         )
-                except StopIteration:
-                    break
-                except Exception as e:
-                    failed += 1
-                    logger.error(
-                        f"A subprocess was killed unexpectedly: {e}. Failed: {failed}/{total_drives}"
-                    )
 
-            logger.info(
-                f"All processes finished. Successful: {completed}, Failed: {failed}"
-            )
-            if failed == total_drives:
-                logger.error("All processes failed")
-                exit(1)
-            elif failed > 0:
-                logger.warning(f"Some processes failed ({failed}/{total_drives})")
-                exit(1)
-            exit(0)
-        finally:
-            pool.close()
-            pool.join()
+                logger.info(
+                    f"All processes finished. Successful: {completed}, Failed: {failed}"
+                )
+                if failed == total_drives:
+                    logger.error("All processes failed")
+                    exit(1)
+                elif failed > 0:
+                    logger.warning(f"Some processes failed ({failed}/{total_drives})")
+                    exit(1)
+                exit(0)
+            except:
+                raise
+    finally:
+        # Cleanup happens automatically via context manager
+        pass
 
 
 if __name__ == "__main__":

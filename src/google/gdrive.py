@@ -200,6 +200,7 @@ class GDrive:
             else:
                 self.export_file(file, base_path)
         except Exception as e:
+            os.makedirs(os.path.dirname(f"{base_path}/errors.txt"), exist_ok=True)
             with open(f"{base_path}/errors.txt", "a") as f:
                 logger.error(
                     f"Error downloading file {file['name']} ({file['id']}, (drive: {self.drive_id})): {e}"
