@@ -1,6 +1,7 @@
 from multiprocessing import cpu_count
 import os
 from typing import Any, List, Tuple, Type
+import base64
 
 from pydantic import EmailStr, Field, field_validator
 from pydantic.fields import FieldInfo
@@ -34,9 +35,11 @@ class Settings(BaseSettings):
     SERVICE_ACCOUNT_FILE: str = Field(
         "service-account-key.json", env="SERVICE_ACCOUNT_FILE"
     )
+    SERVICE_ACCOUNT_JSON: str = Field(None, env="SERVICE_ACCOUNT_JSON")
     DELEGATED_ADMIN_EMAIL: EmailStr = Field(None, env="DELEGATED_ADMIN_EMAIL")
     WORKSPACE_CUSTOMER_ID: str = Field(None, env="WORKSPACE_CUSTOMER_ID")
     S3_BUCKET_NAME: str = Field(None, env="S3_BUCKET_NAME")
+    S3_ROLE_BASED_ACCESS: bool = Field(False, env="S3_ROLE_BASED_ACCESS")
     S3_ACCESS_KEY: str = Field(None, env="S3_ACCESS_KEY")
     S3_SECRET_KEY: str = Field(None, env="S3_SECRET_KEY")
 
@@ -57,15 +60,34 @@ class Settings(BaseSettings):
     @field_validator("SERVICE_ACCOUNT_FILE")
     def validate_file_exists(cls, v, info):
         if not os.path.exists(v):
-            raise ValueError(f"{info.field_name} does not exist")
+            # Get the current data being validated
+            json_content = os.environ.get("SERVICE_ACCOUNT_JSON")
+            if json_content:
+                try:
+                    decoded_content = base64.b64decode(json_content).decode("utf-8")
+                    with open(v, "w") as f:
+                        f.write(decoded_content)
+                except Exception as e:
+                    raise ValueError(
+                        f"Failed to create {v} from SERVICE_ACCOUNT_JSON: {str(e)}"
+                    )
+            else:
+                raise ValueError(f"{info.field_name} does not exist")
         return v
 
-    @field_validator(
-        "WORKSPACE_CUSTOMER_ID", "S3_BUCKET_NAME", "S3_ACCESS_KEY", "S3_SECRET_KEY"
-    )
+    @field_validator("WORKSPACE_CUSTOMER_ID", "S3_BUCKET_NAME")
     def validate_not_none(cls, v, info):
         if v is None or v == "":
             raise ValueError(f"{info.field_name} must be set")
+        return v
+
+    @field_validator("S3_ACCESS_KEY", "S3_SECRET_KEY")
+    def validate_s3_credentials(cls, v, info):
+        if not cls.model_fields["S3_ROLE_BASED_ACCESS"].default:
+            if v is None or v == "":
+                raise ValueError(
+                    f"{info.field_name} must be set when not using role-based access. Set S3_ROLE_BASED_ACCESS to True to use role-based access."
+                )
         return v
 
     @classmethod

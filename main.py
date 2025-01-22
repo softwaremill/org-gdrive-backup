@@ -57,7 +57,10 @@ def compress_files_from_drive(drive_id: str, files_path: str) -> None:
 
 
 def upload_files_to_s3(drive_id: str, downloads_path: str, timestamp: str) -> None:
-    s3 = S3(SETTINGS.S3_BUCKET_NAME, SETTINGS.S3_ACCESS_KEY, SETTINGS.S3_SECRET_KEY)
+    if SETTINGS.S3_ROLE_BASED_ACCESS:
+        s3 = S3(SETTINGS.S3_BUCKET_NAME, None, None, role_based=True)
+    else:
+        s3 = S3(SETTINGS.S3_BUCKET_NAME, SETTINGS.S3_ACCESS_KEY, SETTINGS.S3_SECRET_KEY)
     logger.info(f"({drive_id}) Uploading files to S3")
     upload_time_start = time.time()
     upload_size = s3.upload_folder(downloads_path, f"{timestamp}/{drive_id}")

@@ -5,11 +5,20 @@ from src.enums import STORAGE_CLASS
 
 
 class S3:
-    def __init__(self, bucket_name: str, access_key: str, secret_key: str) -> None:
+    def __init__(
+        self,
+        bucket_name: str,
+        access_key: str,
+        secret_key: str,
+        role_based: bool = False,
+    ) -> None:
         self.bucket_name = bucket_name
-        self.s3 = boto3.client(
-            "s3", aws_access_key_id=access_key, aws_secret_access_key=secret_key
-        )
+        if role_based:
+            self.s3 = boto3.client("s3")
+        else:
+            self.s3 = boto3.client(
+                "s3", aws_access_key_id=access_key, aws_secret_access_key=secret_key
+            )
 
     def upload_folder(
         self,

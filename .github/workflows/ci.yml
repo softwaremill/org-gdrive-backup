@@ -44,5 +44,4 @@ jobs:
           docker build -t ${ECR_URL}:${GITHUB_RUN_NUMBER} .
       - name: Push container
         run: |
-          gcloud auth configure-docker europe-west2-docker.pkg.dev
           docker push ${ECR_URL}:${GITHUB_RUN_NUMBER}

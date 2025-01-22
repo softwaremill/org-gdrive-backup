@@ -28,6 +28,7 @@ This project is a simple Python script that backs up all Google Drives in a Goog
 2. Click on `Manage Domain Wide Delegation` and click on `Add new`
 
 3. Enter the Client ID of the service account you created earlier and the following scopes:
+
    - `https://www.googleapis.com/auth/admin.directory.user.readonly`
    - `https://www.googleapis.com/auth/drive.readonly`
 
@@ -35,17 +36,21 @@ This project is a simple Python script that backs up all Google Drives in a Goog
 
 ## Enviroment variables
 
-| Name                     | Required | Purpose                                                                             | Type   | Default                    |
-|--------------------------|----------|-------------------------------------------------------------------------------------|--------|----------------------------|
-| `DELEGATED_ADMIN_EMAIL`    | Yes      | E-mail address of the superadmin account                                          | string |                            |
-| `WORKSPACE_CUSTOMER_ID`    | Yes      | Customer ID from Google Admin Console                                             | string |                            |
-| `SERVICE_ACCOUNT_FILE`     | Yes      | Path to service account .json key                                                 | string | `service-account-key.json` |
-| `MAX_DOWNLOAD_THREADS`     | No       | How many threads (**per single drive**) are used to download files                | int    | `20`                        |
-| `MAX_DRIVE_PROCESSES`      | No       | Each drive gets it's own process. This specifies how many drives can be handled concurrently. | int    | `4`            |
-| `COMPRESS_DRIVES`          | No       | Compress the exported drives to a .zip file                                       | bool   | `false`                    |
-| `COMPRESSION_PROCESSES`    | No       | How many processes are used to compress the drives (if supported by algorithm)    | int    | `cpu_count()`              |
-| `DRIVE_WHITELIST`          | No       | Comma-separated list of drive IDs to backup (e.g. `user@domain.tld,0AE1OlXvu8lCKUk9PVA`) | string |                  |
-
+| Name                    | Required | Purpose                                                                                                        | Type   | Default                    |
+| ----------------------- | -------- | -------------------------------------------------------------------------------------------------------------- | ------ | -------------------------- |
+| `DELEGATED_ADMIN_EMAIL` | Yes      | E-mail address of the superadmin account                                                                       | string |                            |
+| `WORKSPACE_CUSTOMER_ID` | Yes      | Customer ID from Google Admin Console                                                                          | string |                            |
+| `SERVICE_ACCOUNT_FILE`  | Perhaps  | Path to service account .json key. If file won't exist, `SERVICE_ACCOUNT_JSON` will be used to create the file | string | `service-account-key.json` |
+| `SERVICE_ACCOUNT_JSON`  | Perhaps  | Service account JSON file **encoded in BASE64**                                                                | string |                            |
+| `S3_BUCKET_NAME`        | Yes      | Name of the S3 bucket to upload the backup to                                                                  | string |                            |
+| `S3_ROLE_BASED_ACCESS`  | Perhaps  | Use role-based access to S3 bucket. If set, `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` are not required   | bool   | `false`                    |
+| `AWS_ACCESS_KEY_ID`     | Perhaps  | AWS Access Key ID                                                                                              | string |                            |
+| `AWS_SECRET_ACCESS_KEY` | Perhaps  | AWS Secret Access Key                                                                                          | string |                            |
+| `MAX_DOWNLOAD_THREADS`  | No       | How many threads (**per single drive**) are used to download files                                             | int    | `20`                       |
+| `MAX_DRIVE_PROCESSES`   | No       | Each drive gets it's own process. This specifies how many drives can be handled concurrently.                  | int    | `4`                        |
+| `COMPRESS_DRIVES`       | No       | Compress the exported drives to a .zip file                                                                    | bool   | `false`                    |
+| `COMPRESSION_PROCESSES` | No       | How many processes are used to compress the drives (if supported by algorithm)                                 | int    | `cpu_count()`              |
+| `DRIVE_WHITELIST`       | No       | Comma-separated list of drive IDs to backup (e.g. `user@domain.tld,0AE1OlXvu8lCKUk9PVA`)                       | string |                            |
 
 # Roadmap
 
@@ -54,6 +59,7 @@ This project is a simple Python script that backs up all Google Drives in a Goog
 - [ ] Configurable metadata fields
 - [ ] Configurable links behaviour
 - [ ] Workload Identity support
+- [x] AWS S3 role-based access
 - [x] Drive whitelist
 
 # Good to know
