@@ -40,8 +40,8 @@ class Settings(BaseSettings):
     WORKSPACE_CUSTOMER_ID: str = Field(None, env="WORKSPACE_CUSTOMER_ID")
     S3_BUCKET_NAME: str = Field(None, env="S3_BUCKET_NAME")
     S3_ROLE_BASED_ACCESS: bool = Field(False, env="S3_ROLE_BASED_ACCESS")
-    S3_ACCESS_KEY: str = Field(None, env="S3_ACCESS_KEY")
-    S3_SECRET_KEY: str = Field(None, env="S3_SECRET_KEY")
+    S3_ACCESS_KEY: str | None = Field(None, env="S3_ACCESS_KEY")
+    S3_SECRET_KEY: str | None = Field(None, env="S3_SECRET_KEY")
 
     @field_validator(
         "MAX_DOWNLOAD_THREADS", "MAX_DRIVE_PROCESSES", "COMPRESSION_PROCESSES"
@@ -83,10 +83,15 @@ class Settings(BaseSettings):
 
     @field_validator("S3_ACCESS_KEY", "S3_SECRET_KEY")
     def validate_s3_credentials(cls, v, info):
-        if not cls.model_fields["S3_ROLE_BASED_ACCESS"].default:
-            if v is None or v == "":
+        if info.data.get("S3_ROLE_BASED_ACCESS"):
+            if v is not None:
                 raise ValueError(
-                    f"{info.field_name} must be set when not using role-based access. Set S3_ROLE_BASED_ACCESS to True to use role-based access."
+                    f"When S3_ROLE_BASED_ACCESS is True, {info.field_name} must not be used."
+                )
+        else:
+            if not v:
+                raise ValueError(
+                    f"When S3_ROLE_BASED_ACCESS is False, {info.field_name} is required"
                 )
         return v
 
