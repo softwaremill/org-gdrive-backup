@@ -1,4 +1,6 @@
 FROM python:3.13.0-slim
+RUN pip3 install botocore
+
 COPY --from=ghcr.io/astral-sh/uv:0.5 /uv /bin/
 WORKDIR /app
 
