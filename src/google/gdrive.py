@@ -231,6 +231,15 @@ class GDrive:
                 if files_remaining % 100 == 0 and files_remaining > 0:
                     logger.info(f"({self.drive_id}) Files remaining: {len(futures)}")
 
+    def _is_cannot_download_error(self, error: Exception) -> bool:
+        return (
+            isinstance(error, Exception)
+            and hasattr(error, "resp")
+            and hasattr(error.resp, "status")
+            and error.resp.status == 403
+            and "This file cannot be downloaded by the user" in str(error)
+        )
+
     def download_file(
         self,
         file: GFile,
@@ -243,6 +252,17 @@ class GDrive:
             else:
                 saved_file_path = self.export_file(file, base_path)
         except Exception as e:
+            if self._is_cannot_download_error(e):
+                logger.warning(
+                    f"Skipping file \"{file['name']}\" ({file['id']}) - no download permission"
+                )
+                os.makedirs(
+                    os.path.dirname(f"{base_path}/permission_errors.txt"), exist_ok=True
+                )
+                with open(f"{base_path}/permission_errors.txt", "a") as f:
+                    f.write(f"\"{file['name']}\" | ({file['id']})\n")
+                return
+
             os.makedirs(os.path.dirname(f"{base_path}/errors.txt"), exist_ok=True)
             with open(f"{base_path}/errors.txt", "a") as f:
                 logger.error(
