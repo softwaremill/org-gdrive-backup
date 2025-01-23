@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     S3_ROLE_BASED_ACCESS: bool = Field(False, env="S3_ROLE_BASED_ACCESS")
     S3_ACCESS_KEY: str | None = Field(None, env="S3_ACCESS_KEY")
     S3_SECRET_KEY: str | None = Field(None, env="S3_SECRET_KEY")
+    AUTO_CLEANUP: bool = Field(False, env="AUTO_CLEANUP")
 
     @field_validator(
         "MAX_DOWNLOAD_THREADS", "MAX_DRIVE_PROCESSES", "COMPRESSION_PROCESSES"

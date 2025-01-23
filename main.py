@@ -57,16 +57,12 @@ def compress_files_from_drive(drive_id: str, files_path: str) -> None:
     )
 
 
-def drive_cleanup(drive_id: str, downloads_path: str) -> None:
-    logger.info(f"({drive_id}) Cleaning up")
-    try:
-        shutil.rmtree(downloads_path)
-        logger.info(f"({drive_id}) Cleanup complete")
-    except Exception as e:
-        logger.error(f"({drive_id}) Error cleaning up: {e}")
-
-
-def upload_files_to_s3(drive_id: str, downloads_path: str, timestamp: str) -> None:
+def upload_files_to_s3(
+    drive_id: str,
+    downloads_path: str,
+    timestamp: str,
+    delete_after_upload: bool = False,
+) -> None:
     if SETTINGS.S3_ROLE_BASED_ACCESS:
         s3 = S3(SETTINGS.S3_BUCKET_NAME, None, None, role_based=True)
     else:
@@ -76,7 +72,8 @@ def upload_files_to_s3(drive_id: str, downloads_path: str, timestamp: str) -> No
     upload_size = s3.upload_folder(downloads_path, f"{timestamp}/{drive_id}")
     upload_size_mb = upload_size / 1024 / 1024
     upload_speed_mb = upload_size_mb / (time.time() - upload_time_start)
-    shutil.rmtree(downloads_path)
+    if delete_after_upload:
+        shutil.rmtree(downloads_path)
     logger.info(
         f"({drive_id}) Files uploaded in {time.time() - upload_time_start:.2f}s ({upload_size_mb:.2f}MB, {upload_speed_mb:.2f}MB/s)"
     )
@@ -128,7 +125,12 @@ def process_drive(args: Tuple[GDrive, str]) -> bool:
 
         if file_count > 0:
             current_task = STATE.UPLOADING
-            upload_files_to_s3(drive_id, downloads_path, current_timestamp)
+            upload_files_to_s3(
+                drive_id,
+                downloads_path,
+                current_timestamp,
+                delete_after_upload=SETTINGS.AUTO_CLEANUP,
+            )
         else:
             logger.warning(f"({drive_id}) No files found, skipping upload")
 

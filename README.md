@@ -52,6 +52,7 @@ This project is a simple Python script that backs up all Google Drives in a Goog
 | `COMPRESSION_PROCESSES` | No       | How many processes are used to compress the drives (if supported by algorithm)                                 | int    | `cpu_count()`              |
 | `DRIVE_WHITELIST`       | No       | Comma-separated list of drive IDs to backup (e.g. `user@domain.tld,0AE1OlXvu8lCKUk9PVA`)                       | string |                            |
 | `DRIVE_BLACKLSIT`       | No       | Comma-separated list of drive IDs to exclude from backup (same as `DRIVE_WHITELIST`).                          | string |                            |
+| `AUTO_CLEANUP`          | No       | Automatically delete the files after the backup is complete                                                    | bool   | `false`                    |
 
 # Roadmap
 
