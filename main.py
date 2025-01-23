@@ -1,5 +1,6 @@
 import os.path
 import random
+import shutil
 import time
 import threading
 from multiprocessing import Pool
@@ -56,6 +57,15 @@ def compress_files_from_drive(drive_id: str, files_path: str) -> None:
     )
 
 
+def drive_cleanup(drive_id: str, downloads_path: str) -> None:
+    logger.info(f"({drive_id}) Cleaning up")
+    try:
+        shutil.rmtree(downloads_path)
+        logger.info(f"({drive_id}) Cleanup complete")
+    except Exception as e:
+        logger.error(f"({drive_id}) Error cleaning up: {e}")
+
+
 def upload_files_to_s3(drive_id: str, downloads_path: str, timestamp: str) -> None:
     if SETTINGS.S3_ROLE_BASED_ACCESS:
         s3 = S3(SETTINGS.S3_BUCKET_NAME, None, None, role_based=True)
@@ -99,7 +109,10 @@ def process_drive(args: Tuple[GDrive, str]) -> bool:
 
         logger.info(f"({drive_id}) Processing drive")
 
-        current_task = STATE.DOWNLOADING
+        if SETTINGS.JIT_S3_UPLOAD:
+            current_task = STATE.DOWNLOADING_AND_JIT_UPLOADING
+        else:
+            current_task = STATE.DOWNLOADING
         download_files_from_drive(drive, metadata_path, files_path)
 
         file_count = len(drive.files)
@@ -137,6 +150,7 @@ def process_drive(args: Tuple[GDrive, str]) -> bool:
 
 
 def main():
+    start_time = time.time()
     admin_credentials = get_credentials(SETTINGS.DELEGATED_ADMIN_EMAIL)
     gadmin = GAdmin(SETTINGS.WORKSPACE_CUSTOMER_ID, admin_credentials)
 
@@ -147,9 +161,31 @@ def main():
 
     drives = []
     for drive_name in users:
-        drives.append(GDrive(drive_name, get_credentials(drive_name), DRIVE_TYPE.USER))
+        drives.append(
+            GDrive(
+                drive_name,
+                get_credentials(drive_name),
+                DRIVE_TYPE.USER,
+                SETTINGS.JIT_S3_UPLOAD,
+                SETTINGS.S3_ROLE_BASED_ACCESS,
+                SETTINGS.S3_BUCKET_NAME,
+                SETTINGS.S3_ACCESS_KEY,
+                SETTINGS.S3_SECRET_KEY,
+            )
+        )
     for drive_name in shared_drives:
-        drives.append(GDrive(drive_name, admin_credentials, DRIVE_TYPE.SHARED))
+        drives.append(
+            GDrive(
+                drive_name,
+                admin_credentials,
+                DRIVE_TYPE.SHARED,
+                SETTINGS.JIT_S3_UPLOAD,
+                SETTINGS.S3_ROLE_BASED_ACCESS,
+                SETTINGS.S3_BUCKET_NAME,
+                SETTINGS.S3_ACCESS_KEY,
+                SETTINGS.S3_SECRET_KEY,
+            )
+        )
 
     logger.debug(f"Drives initialized: {drives}")
     logger.info(f"Whitelist: {SETTINGS.DRIVE_WHITELIST}")
@@ -211,6 +247,7 @@ def main():
                 elif failed > 0:
                     logger.warning(f"Some processes failed ({failed}/{total_drives})")
                     exit(1)
+                logger.info(f"Execution time: {time.time() - start_time:.2f}s")
                 exit(0)
             except:
                 raise

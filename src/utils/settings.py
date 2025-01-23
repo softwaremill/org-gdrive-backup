@@ -28,6 +28,7 @@ class MyCustomSource(EnvSettingsSource):
 class Settings(BaseSettings):
     MAX_DOWNLOAD_THREADS: int = Field(20, env="MAX_DOWNLOAD_THREADS")
     MAX_DRIVE_PROCESSES: int = Field(4, env="MAX_DRIVE_PROCESSES")
+    JIT_S3_UPLOAD: bool = Field(False, env="JIT_S3_UPLOAD")
     COMPRESS_DRIVES: bool = Field(False, env="COMPRESS_DRIVES")
     COMPRESSION_ALGORITHM: str = Field("pigz", env="COMPRESSION_ALGORITHM")
     COMPRESSION_PROCESSES: int = Field(cpu_count(), env="COMPRESSION_PROCESSES")
@@ -50,6 +51,12 @@ class Settings(BaseSettings):
     def validate_positive_values(cls, v, info):
         if v <= 0:
             raise ValueError(f"{info.field_name} must be positive")
+        return v
+
+    @field_validator("COMPRESS_DRIVES")
+    def validate_compress_drives(cls, v, info):
+        if v and info.data.get("JIT_S3_UPLOAD"):
+            raise ValueError("COMPRESS_DRIVES must be False when JIT_S3_UPLOAD is True")
         return v
 
     @field_validator("COMPRESSION_ALGORITHM")

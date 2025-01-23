@@ -3,6 +3,7 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
+from ..aws.s3 import S3
 from src.utils.logger import app_logger as logger
 from enum import Enum
 from typing import Optional, Dict, Any, TypeAlias
@@ -23,7 +24,17 @@ class DRIVE_TYPE(Enum):
 
 
 class GDrive:
-    def __init__(self, drive_id: str, credentials: Credentials, drive_type: DRIVE_TYPE):
+    def __init__(
+        self,
+        drive_id: str,
+        credentials: Credentials,
+        drive_type: DRIVE_TYPE,
+        jit_s3_upload: bool = False,
+        s3_role_based_access: bool = False,
+        s3_bucket_name: str = None,
+        s3_access_key: str = None,
+        s3_secret_key: str = None,
+    ) -> None:
         self.drive_id = drive_id
         self.credentials = credentials
         self.drive_type = drive_type
@@ -38,6 +49,11 @@ class GDrive:
             "application/vnd.google-apps.script": self._handle_script_export,
             "application/vnd.google-apps.form": self._handle_zip_export,
         }
+        self.jit_s3_upload = jit_s3_upload
+        self.s3_role_based_access = s3_role_based_access
+        self.s3_bucket_name = s3_bucket_name
+        self.s3_access_key = s3_access_key
+        self.s3_secret_key = s3_secret_key
 
     def __repr__(self) -> str:
         return f"GDrive({self.drive_id}, {self.drive_type})"
@@ -48,6 +64,19 @@ class GDrive:
                 "drive", "v3", credentials=self.credentials
             )
         return thread_local.drive_service
+
+    def _get_s3_service(self) -> S3:
+        if not hasattr(thread_local, "s3"):
+            if self.s3_role_based_access:
+                s3 = S3(self.s3_bucket_name, None, None, role_based=True)
+            else:
+                s3 = S3(
+                    self.s3_bucket_name,
+                    self.s3_access_key,
+                    self.s3_secret_key,
+                )
+            thread_local.s3 = s3
+        return thread_local.s3
 
     def _get_auth_session(self) -> requests.Session:
         if not hasattr(thread_local, "auth_session"):
@@ -202,12 +231,17 @@ class GDrive:
                 if files_remaining % 100 == 0 and files_remaining > 0:
                     logger.info(f"({self.drive_id}) Files remaining: {len(futures)}")
 
-    def download_file(self, file: GFile, base_path: str) -> None:
+    def download_file(
+        self,
+        file: GFile,
+        base_path: str,
+    ) -> None:
+        saved_file_path = None
         try:
             if "md5Checksum" in file:
-                self.download_binary_file(file, base_path)
+                saved_file_path = self.download_binary_file(file, base_path)
             else:
-                self.export_file(file, base_path)
+                saved_file_path = self.export_file(file, base_path)
         except Exception as e:
             os.makedirs(os.path.dirname(f"{base_path}/errors.txt"), exist_ok=True)
             with open(f"{base_path}/errors.txt", "a") as f:
@@ -218,26 +252,42 @@ class GDrive:
                     f"Error downloading file \"{file['name']}\" ({file['id']}): {e}\n"
                 )
 
-    def download_binary_file(self, file: GFile, base_path: str) -> None:
+        if self.jit_s3_upload and saved_file_path is not None:
+            try:
+                s3 = self._get_s3_service()
+                destination_path = "/".join(saved_file_path.split("/")[1:])
+                s3.upload_file(saved_file_path, destination_path)
+                logger.trace(f"Removing file: {saved_file_path}")
+                os.remove(saved_file_path)
+            except Exception as e:
+                os.makedirs(os.path.dirname(f"{base_path}/errors.txt"), exist_ok=True)
+                with open(f"{base_path}/errors.txt", "a") as f:
+                    logger.error(f'Error uploading file "{saved_file_path}" to S3: {e}')
+                    f.write(f'Error uploading file "{saved_file_path}" to S3: {e}\n')
+
+    def download_binary_file(self, file: GFile, base_path: str) -> str:
         drive_service = self._get_drive_service()
         request = drive_service.files().get_media(fileId=file["id"])
-        new_file_path = f"{base_path}/{file['path']}/{file['name']}"
+        new_file_path = f"{base_path}{file['path']}/{file['name']}"
         self.write_request_to_file(request, new_file_path)
+        return new_file_path
 
-    def export_file(self, file: GFile, base_path: str) -> None:
+    def export_file(self, file: GFile, base_path: str) -> str:
         if file["mimeType"] == "application/vnd.google-apps.folder":
             return
 
         drive_service = self._get_drive_service()
-        new_file_path = f"{base_path}/{file['path']}/{file['name']}"
+        new_file_path = f"{base_path}{file['path']}/{file['name']}"
 
         export_handler = self._file_export_handlers.get(file["mimeType"], None)
         if export_handler is not None:
-            export_handler(file, drive_service, new_file_path)
+            saved_file_path = export_handler(file, drive_service, new_file_path)
         else:
             with open(f"{base_path}/errors.txt", "a") as f:
                 logger.warning(f"Unknown file type: {file['mimeType']} ({file['id']})")
                 f.write(f"Unknown file type: {file['mimeType']} ({file['id']})\n")
+                return None
+        return saved_file_path
 
     def write_request_to_file(self, request: Any, file_path: str) -> None:
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
@@ -249,7 +299,7 @@ class GDrive:
 
     def _handle_shortcut_export(
         self, file: GFile, drive_service: DriveService, new_file_path: str
-    ) -> None:
+    ) -> str:
         original_file = file["shortcutDetails"]["targetId"]
         original_file_path = self.fetch_file_path(
             original_file, drive_service, supportsAllDrives=True
@@ -257,10 +307,11 @@ class GDrive:
         os.makedirs(os.path.dirname(new_file_path), exist_ok=True)
         with open(f"{new_file_path}.lnk.txt", "w") as f:
             f.write(original_file_path)
+        return f"{new_file_path}.lnk.txt"
 
     def _handle_document_export(
         self, file: GFile, drive_service: DriveService, new_file_path: str
-    ) -> None:
+    ) -> str:
         desired_mimetype = (
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
@@ -273,10 +324,11 @@ class GDrive:
         except Exception:
             export_link = file["exportLinks"][desired_mimetype]
             self.download_via_export_link(export_link, f"{new_file_path}.docx")
+        return f"{new_file_path}.docx"
 
     def _handle_spreadsheet_export(
         self, file: GFile, drive_service: DriveService, new_file_path: str
-    ) -> None:
+    ) -> str:
         desired_mimetype = (
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
@@ -289,10 +341,11 @@ class GDrive:
         except Exception:
             export_link = file["exportLinks"][desired_mimetype]
             self.download_via_export_link(export_link, f"{new_file_path}.xlsx")
+        return f"{new_file_path}.xlsx"
 
     def _handle_presentation_export(
         self, file: GFile, drive_service: DriveService, new_file_path: str
-    ) -> None:
+    ) -> str:
         desired_mimetype = (
             "application/vnd.openxmlformats-officedocument.presentationml.presentation"
         )
@@ -305,10 +358,11 @@ class GDrive:
         except Exception:
             export_link = file["exportLinks"][desired_mimetype]
             self.download_via_export_link(export_link, f"{new_file_path}.pptx")
+        return f"{new_file_path}.pptx"
 
     def _handle_drawing_export(
         self, file: GFile, drive_service: DriveService, new_file_path: str
-    ) -> None:
+    ) -> str:
         desired_mimetype = "application/pdf"
         try:
             request = drive_service.files().export_media(
@@ -319,10 +373,11 @@ class GDrive:
         except Exception:
             export_link = file["exportLinks"][desired_mimetype]
             self.download_via_export_link(export_link, f"{new_file_path}.pdf")
+        return f"{new_file_path}.pdf"
 
     def _handle_script_export(
         self, file: GFile, drive_service: DriveService, new_file_path: str
-    ) -> None:
+    ) -> str:
         desired_mimetype = "application/vnd.google-apps.script+json"
         try:
             request = drive_service.files().export_media(
@@ -333,10 +388,11 @@ class GDrive:
         except Exception:
             export_link = file["exportLinks"][desired_mimetype]
             self.download_via_export_link(export_link, f"{new_file_path}.json")
+        return f"{new_file_path}.json"
 
     def _handle_zip_export(
         self, file: GFile, drive_service: DriveService, new_file_path: str
-    ) -> None:
+    ) -> str:
         desired_mimetype = "application/zip"
         try:
             request = drive_service.files().export_media(
@@ -347,8 +403,9 @@ class GDrive:
         except Exception:
             export_link = file["exportLinks"][desired_mimetype]
             self.download_via_export_link(export_link, f"{new_file_path}.zip")
+        return f"{new_file_path}.zip"
 
-    def download_via_export_link(self, export_link: str, new_file_path: str) -> None:
+    def download_via_export_link(self, export_link: str, new_file_path: str) -> str:
         auth_session = self._get_auth_session()
         os.makedirs(os.path.dirname(new_file_path), exist_ok=True)
         with open(new_file_path, "wb") as f:
