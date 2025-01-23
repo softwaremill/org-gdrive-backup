@@ -76,6 +76,7 @@ def upload_files_to_s3(drive_id: str, downloads_path: str, timestamp: str) -> No
     upload_size = s3.upload_folder(downloads_path, f"{timestamp}/{drive_id}")
     upload_size_mb = upload_size / 1024 / 1024
     upload_speed_mb = upload_size_mb / (time.time() - upload_time_start)
+    shutil.rmtree(downloads_path)
     logger.info(
         f"({drive_id}) Files uploaded in {time.time() - upload_time_start:.2f}s ({upload_size_mb:.2f}MB, {upload_speed_mb:.2f}MB/s)"
     )
