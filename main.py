@@ -107,7 +107,7 @@ def process_drive(args: Tuple[GDrive, str]) -> bool:
         status_thread = threading.Thread(target=print_status, daemon=True)
         status_thread.start()
 
-        logger.info(f"({drive_id}) Processing drive")
+        logger.info(f"({drive_id}) Started processing drive")
 
         if SETTINGS.JIT_S3_UPLOAD:
             current_task = STATE.DOWNLOADING_AND_JIT_UPLOADING
@@ -133,7 +133,7 @@ def process_drive(args: Tuple[GDrive, str]) -> bool:
 
         current_task = STATE.DONE
         logger.info(
-            f"({drive_id}) Drive processed in {time.time() - start_time:.2f}s ({len(drive.files)} files)"
+            f"({drive_id}) Drive processed in {time.time() - start_time:.2f}s - ({len(drive.files)} files)"
         )
         return True
 
@@ -209,51 +209,55 @@ def main():
         drives
     )  # In case of failure, every backup will have some unique data
 
-    try:
-        with Pool(processes=SETTINGS.MAX_DRIVE_PROCESSES) as pool:
-            current_timestamp = time.strftime("%Y%m%d-%H%M%S")
-            logger.debug(f"Current timestamp: {current_timestamp}")
+    with Pool(processes=SETTINGS.MAX_DRIVE_PROCESSES) as pool:
+        current_timestamp = time.strftime("%Y%m%d-%H%M%S")
+        logger.debug(f"Current timestamp: {current_timestamp}")
 
-            total_drives = len(drives)
-            completed = 0
-            failed = 0
-            args: Tuple[GDrive, str] = [(drive, current_timestamp) for drive in drives]
+        remaining_drives = [(drive, current_timestamp) for drive in drives]
+        processed_drives = set()
+        failed_drives = set()
+        running_processes = []
 
-            try:
-                iterator = pool.imap_unordered(process_drive, args)
-                while True:
-                    try:
-                        if next(iterator) is True:
-                            completed += 1
-                        else:
-                            failed += 1
-                            logger.error(
-                                f"A subprocess has failed. Failed: {failed}/{total_drives}"
-                            )
-                    except StopIteration:
-                        break
-                    except Exception as e:
-                        failed += 1
-                        logger.error(
-                            f"A subprocess was killed unexpectedly: {e}. Failed: {failed}/{total_drives}"
-                        )
+        # Initial process spawning
+        while (
+            len(running_processes) < SETTINGS.MAX_DRIVE_PROCESSES and remaining_drives
+        ):
+            drive_args = remaining_drives.pop(0)
+            result = pool.apply_async(process_drive, (drive_args,))
+            running_processes.append((drive_args, result))
+            logger.info(f"Started processing drive {drive_args[0].drive_id}")
 
-                logger.info(
-                    f"All processes finished. Successful: {completed}, Failed: {failed}"
-                )
-                if failed == total_drives:
-                    logger.error("All processes failed")
-                    exit(1)
-                elif failed > 0:
-                    logger.warning(f"Some processes failed ({failed}/{total_drives})")
-                    exit(1)
-                logger.info(f"Execution time: {time.time() - start_time:.2f}s")
-                exit(0)
-            except:
-                raise
-    finally:
-        # Cleanup happens automatically via context manager
-        pass
+        # Main processing loop
+        while running_processes or remaining_drives:
+            # Check for completed processes
+            for drive_args, result in running_processes[:]:
+                if result.ready():
+                    drive = drive_args[0]
+                    success = result.get()
+                    if success:
+                        processed_drives.add(drive.drive_id)
+                    else:
+                        failed_drives.add(drive.drive_id)
+
+                    running_processes.remove((drive_args, result))
+
+                    # Spawn new process if there are remaining drives
+                    if remaining_drives:
+                        new_drive_args = remaining_drives.pop(0)
+                        new_result = pool.apply_async(process_drive, (new_drive_args,))
+                        running_processes.append((new_drive_args, new_result))
+
+            time.sleep(1)  # Short sleep to prevent CPU spinning
+
+        total_time = time.time() - start_time
+        logger.info(f"Backup completed in {total_time:.2f}s")
+        logger.info(
+            f"Successfully processed drives: {len(processed_drives)}/{len(drives)}"
+        )
+        logger.debug(f"Successfully processed drives: {processed_drives}")
+        if len(processed_drives) < len(drives):
+            logger.warning("Some drives were not processed successfully!")
+            logger.warning(f"Failed drives: {failed_drives}")
 
 
 if __name__ == "__main__":
