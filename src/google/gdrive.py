@@ -243,6 +243,7 @@ class GDrive:
         original_file_path = self.fetch_file_path(
             original_file, drive_service, supportsAllDrives=True
         )
+        os.makedirs(os.path.dirname(new_file_path), exist_ok=True)
         with open(f"{new_file_path}.lnk.txt", "w") as f:
             f.write(original_file_path)
 

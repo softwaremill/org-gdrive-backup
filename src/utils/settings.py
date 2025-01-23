@@ -17,7 +17,7 @@ class MyCustomSource(EnvSettingsSource):
     def prepare_field_value(
         self, field_name: str, field: FieldInfo, value: Any, value_is_complex: bool
     ) -> Any:
-        if field_name == "DRIVE_WHITELIST":
+        if field_name == "DRIVE_WHITELIST" or field_name == "DRIVE_BLACKLIST":
             if value:
                 return [x for x in value.split(",")]
             else:
@@ -32,6 +32,7 @@ class Settings(BaseSettings):
     COMPRESSION_ALGORITHM: str = Field("pigz", env="COMPRESSION_ALGORITHM")
     COMPRESSION_PROCESSES: int = Field(cpu_count(), env="COMPRESSION_PROCESSES")
     DRIVE_WHITELIST: List[str] = Field([], env="DRIVE_WHITELIST")
+    DRIVE_BLACKLIST: List[str] = Field([], env="DRIVE_BLACKLIST")
     SERVICE_ACCOUNT_FILE: str = Field(
         "service-account-key.json", env="SERVICE_ACCOUNT_FILE"
     )

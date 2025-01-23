@@ -151,14 +151,20 @@ def main():
     for drive_name in shared_drives:
         drives.append(GDrive(drive_name, admin_credentials, DRIVE_TYPE.SHARED))
 
-    logger.info(f"Whitelist: {SETTINGS.DRIVE_WHITELIST}")
     logger.debug(f"Drives initialized: {drives}")
+    logger.info(f"Whitelist: {SETTINGS.DRIVE_WHITELIST}")
+    logger.info(f"Blacklist: {SETTINGS.DRIVE_BLACKLIST}")
 
     if len(SETTINGS.DRIVE_WHITELIST) == 0:
         logger.warning("No whitelist specified, processing all drives")
     else:
         drives = [
             drive for drive in drives if drive.drive_id in SETTINGS.DRIVE_WHITELIST
+        ]
+
+    if len(SETTINGS.DRIVE_BLACKLIST) > 0:
+        drives = [
+            drive for drive in drives if drive.drive_id not in SETTINGS.DRIVE_BLACKLIST
         ]
 
     logger.info(f"Drives to process: {drives}")

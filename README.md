@@ -51,6 +51,7 @@ This project is a simple Python script that backs up all Google Drives in a Goog
 | `COMPRESS_DRIVES`       | No       | Compress the exported drives to a .zip file                                                                    | bool   | `false`                    |
 | `COMPRESSION_PROCESSES` | No       | How many processes are used to compress the drives (if supported by algorithm)                                 | int    | `cpu_count()`              |
 | `DRIVE_WHITELIST`       | No       | Comma-separated list of drive IDs to backup (e.g. `user@domain.tld,0AE1OlXvu8lCKUk9PVA`)                       | string |                            |
+| `DRIVE_BLACKLSIT`       | No       | Comma-separated list of drive IDs to exclude from backup (same as `DRIVE_WHITELIST`).                          | string |                            |
 
 # Roadmap
 
@@ -61,6 +62,7 @@ This project is a simple Python script that backs up all Google Drives in a Goog
 - [ ] Workload Identity support
 - [x] AWS S3 role-based access
 - [x] Drive whitelist
+- [x] Drive blacklist
 
 # Good to know
 
