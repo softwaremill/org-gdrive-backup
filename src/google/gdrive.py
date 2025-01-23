@@ -268,7 +268,10 @@ class GDrive:
     def download_binary_file(self, file: GFile, base_path: str) -> str:
         drive_service = self._get_drive_service()
         request = drive_service.files().get_media(fileId=file["id"])
-        new_file_path = f"{base_path}{file['path']}/{file['name']}"
+        if file["path"] == "":
+            new_file_path = f"{base_path}/{file['name']}"
+        else:
+            new_file_path = f"{base_path}/{file['path']}/{file['name']}"
         self.write_request_to_file(request, new_file_path)
         return new_file_path
 
@@ -277,12 +280,16 @@ class GDrive:
             return
 
         drive_service = self._get_drive_service()
-        new_file_path = f"{base_path}{file['path']}/{file['name']}"
+        if file["path"] == "":
+            new_file_path = f"{base_path}/{file['name']}"
+        else:
+            new_file_path = f"{base_path}/{file['path']}/{file['name']}"
 
         export_handler = self._file_export_handlers.get(file["mimeType"], None)
         if export_handler is not None:
             saved_file_path = export_handler(file, drive_service, new_file_path)
         else:
+            os.makedirs(os.path.dirname(f"{base_path}/errors.txt"), exist_ok=True)
             with open(f"{base_path}/errors.txt", "a") as f:
                 logger.warning(f"Unknown file type: {file['mimeType']} ({file['id']})")
                 f.write(f"Unknown file type: {file['mimeType']} ({file['id']})\n")

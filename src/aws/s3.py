@@ -1,5 +1,6 @@
 import os
 import boto3
+from tenacity import retry, stop_after_attempt, wait_exponential
 from src.utils.logger import app_logger as logger
 from src.enums import STORAGE_CLASS
 
@@ -50,6 +51,11 @@ class S3:
 
         return file_size_counter
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=5),
+        reraise=True,
+    )
     def upload_file(
         self,
         source_path: str,
