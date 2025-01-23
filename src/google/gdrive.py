@@ -6,6 +6,7 @@ import threading
 from src.utils.logger import app_logger as logger
 from enum import Enum
 from typing import Optional, Dict, Any, TypeAlias
+import requests
 
 import json
 import os
@@ -47,6 +48,14 @@ class GDrive:
                 "drive", "v3", credentials=self.credentials
             )
         return thread_local.drive_service
+
+    def _get_auth_session(self) -> requests.Session:
+        if not hasattr(thread_local, "auth_session"):
+            thread_local.auth_session = requests.Session()
+            thread_local.auth_session.headers.update(
+                {"Authorization": f"Bearer {self.credentials.token}"}
+            )
+        return thread_local.auth_session
 
     def fetch_file_path(
         self, file_id: str, drive_service: DriveService, supportsAllDrives: bool = False
@@ -105,7 +114,7 @@ class GDrive:
     ) -> None:
         request = drive_service.files().list(
             pageSize=page_size,
-            fields="nextPageToken, files(id, name, md5Checksum, parents, mimeType, shortcutDetails, permissions)",
+            fields="nextPageToken, files(id, name, md5Checksum, parents, mimeType, shortcutDetails, permissions, exportLinks)",
         )
         while request is not None:
             response = request.execute()
@@ -118,7 +127,7 @@ class GDrive:
         known_permissions = {}
         request = drive_service.files().list(
             pageSize=page_size,
-            fields="nextPageToken, files(id, name, md5Checksum, parents, mimeType, shortcutDetails, permissionIds)",
+            fields="nextPageToken, files(id, name, md5Checksum, parents, mimeType, shortcutDetails, permissionIds, exportLinks)",
             corpora="drive",
             driveId=self.drive_id,
             includeItemsFromAllDrives=True,
@@ -203,9 +212,11 @@ class GDrive:
             os.makedirs(os.path.dirname(f"{base_path}/errors.txt"), exist_ok=True)
             with open(f"{base_path}/errors.txt", "a") as f:
                 logger.error(
-                    f"Error downloading file {file['name']} ({file['id']}, (drive: {self.drive_id})): {e}"
+                    f"Error downloading file \"{file['name']}\" ({file['id']}, (drive: {self.drive_id})): {e}"
                 )
-                f.write(f"Error downloading file {file['name']} ({file['id']}): {e}\n")
+                f.write(
+                    f"Error downloading file \"{file['name']}\" ({file['id']}): {e}\n"
+                )
 
     def download_binary_file(self, file: GFile, base_path: str) -> None:
         drive_service = self._get_drive_service()
@@ -250,50 +261,98 @@ class GDrive:
     def _handle_document_export(
         self, file: GFile, drive_service: DriveService, new_file_path: str
     ) -> None:
-        request = drive_service.files().export_media(
-            fileId=file["id"],
-            mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        desired_mimetype = (
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         )
-        self.write_request_to_file(request, f"{new_file_path}.docx")
+        try:
+            request = drive_service.files().export_media(
+                fileId=file["id"],
+                mimeType=desired_mimetype,
+            )
+            self.write_request_to_file(request, f"{new_file_path}.docx")
+        except Exception:
+            export_link = file["exportLinks"][desired_mimetype]
+            self.download_via_export_link(export_link, f"{new_file_path}.docx")
 
     def _handle_spreadsheet_export(
         self, file: GFile, drive_service: DriveService, new_file_path: str
     ) -> None:
-        request = drive_service.files().export_media(
-            fileId=file["id"],
-            mimeType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        desired_mimetype = (
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-        self.write_request_to_file(request, f"{new_file_path}.xlsx")
+        try:
+            request = drive_service.files().export_media(
+                fileId=file["id"],
+                mimeType=desired_mimetype,
+            )
+            self.write_request_to_file(request, f"{new_file_path}.xlsx")
+        except Exception:
+            export_link = file["exportLinks"][desired_mimetype]
+            self.download_via_export_link(export_link, f"{new_file_path}.xlsx")
 
     def _handle_presentation_export(
         self, file: GFile, drive_service: DriveService, new_file_path: str
     ) -> None:
-        request = drive_service.files().export_media(
-            fileId=file["id"],
-            mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        desired_mimetype = (
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation"
         )
-        self.write_request_to_file(request, f"{new_file_path}.pptx")
+        try:
+            request = drive_service.files().export_media(
+                fileId=file["id"],
+                mimeType=desired_mimetype,
+            )
+            self.write_request_to_file(request, f"{new_file_path}.pptx")
+        except Exception:
+            export_link = file["exportLinks"][desired_mimetype]
+            self.download_via_export_link(export_link, f"{new_file_path}.pptx")
 
     def _handle_drawing_export(
         self, file: GFile, drive_service: DriveService, new_file_path: str
     ) -> None:
-        request = drive_service.files().export_media(
-            fileId=file["id"], mimeType="application/pdf"
-        )
-        self.write_request_to_file(request, f"{new_file_path}.pdf")
+        desired_mimetype = "application/pdf"
+        try:
+            request = drive_service.files().export_media(
+                fileId=file["id"],
+                mimeType=desired_mimetype,
+            )
+            self.write_request_to_file(request, f"{new_file_path}.pdf")
+        except Exception:
+            export_link = file["exportLinks"][desired_mimetype]
+            self.download_via_export_link(export_link, f"{new_file_path}.pdf")
 
     def _handle_script_export(
         self, file: GFile, drive_service: DriveService, new_file_path: str
     ) -> None:
-        request = drive_service.files().export_media(
-            fileId=file["id"], mimeType="application/vnd.google-apps.script+json"
-        )
-        self.write_request_to_file(request, f"{new_file_path}.json")
+        desired_mimetype = "application/vnd.google-apps.script+json"
+        try:
+            request = drive_service.files().export_media(
+                fileId=file["id"],
+                mimeType=desired_mimetype,
+            )
+            self.write_request_to_file(request, f"{new_file_path}.json")
+        except Exception:
+            export_link = file["exportLinks"][desired_mimetype]
+            self.download_via_export_link(export_link, f"{new_file_path}.json")
 
     def _handle_zip_export(
         self, file: GFile, drive_service: DriveService, new_file_path: str
     ) -> None:
-        request = drive_service.files().export_media(
-            fileId=file["id"], mimeType="application/zip"
-        )
-        self.write_request_to_file(request, f"{new_file_path}.zip")
+        desired_mimetype = "application/zip"
+        try:
+            request = drive_service.files().export_media(
+                fileId=file["id"],
+                mimeType=desired_mimetype,
+            )
+            self.write_request_to_file(request, f"{new_file_path}.zip")
+        except Exception:
+            export_link = file["exportLinks"][desired_mimetype]
+            self.download_via_export_link(export_link, f"{new_file_path}.zip")
+
+    def download_via_export_link(self, export_link: str, new_file_path: str) -> None:
+        auth_session = self._get_auth_session()
+        os.makedirs(os.path.dirname(new_file_path), exist_ok=True)
+        with open(new_file_path, "wb") as f:
+            response = auth_session.get(export_link, stream=True)
+            for chunk in response.iter_content(chunk_size=104857600):  # 100MB
+                if chunk:
+                    f.write(chunk)
