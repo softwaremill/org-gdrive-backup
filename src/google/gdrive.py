@@ -29,6 +29,7 @@ class GDrive:
         drive_id: str,
         credentials: Credentials,
         drive_type: DRIVE_TYPE,
+        include_shared_with_me: bool = True,
         jit_s3_upload: bool = False,
         s3_role_based_access: bool = False,
         s3_bucket_name: str = None,
@@ -38,6 +39,7 @@ class GDrive:
         self.drive_id = drive_id
         self.credentials = credentials
         self.drive_type = drive_type
+        self.include_shared_with_me = include_shared_with_me
         self.files = []
         self._files_fetched = False
         self._file_export_handlers = {
@@ -141,10 +143,18 @@ class GDrive:
     def _fetch_file_list_user_drive(
         self, drive_service: DriveService, page_size: int
     ) -> None:
-        request = drive_service.files().list(
-            pageSize=page_size,
-            fields="nextPageToken, files(id, name, md5Checksum, parents, mimeType, shortcutDetails, permissions, exportLinks)",
-        )
+        fields = "nextPageToken, files(id, name, md5Checksum, parents, mimeType, shortcutDetails, permissions, exportLinks)"
+        if self.include_shared_with_me:
+            request = drive_service.files().list(
+                pageSize=page_size,
+                fields=fields,
+            )
+        else:
+            request = drive_service.files().list(
+                pageSize=page_size,
+                fields=fields,
+                q="'me' in owners",
+            )
         while request is not None:
             response = request.execute()
             self.files.extend(response.get("files", []))
@@ -292,7 +302,7 @@ class GDrive:
             new_file_path = f"{base_path}/{file['name']}"
         else:
             new_file_path = f"{base_path}/{file['path']}/{file['name']}"
-        self.write_request_to_file(request, new_file_path)
+        self.write_request_to_file(file["id"], request, new_file_path)
         return new_file_path
 
     def export_file(self, file: GFile, base_path: str) -> str:
@@ -316,8 +326,20 @@ class GDrive:
                 return None
         return saved_file_path
 
-    def write_request_to_file(self, request: Any, file_path: str) -> None:
+    def write_request_to_file(self, fileId: str, request: Any, file_path: str) -> None:
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+        file_already_exists = os.path.exists(file_path)
+        if file_already_exists:
+            file_name = file_path.split("/")[-1]
+            short_file_id = fileId[:5]
+            if "." in file_name:
+                file_name, file_extension = file_name.rsplit(".", 1)
+                file_name = f"{file_name}_{short_file_id}.{file_extension}"
+            else:
+                file_name = f"{file_name}_{short_file_id}"
+            file_path = os.path.join(os.path.dirname(file_path), file_name)
+
         with open(file_path, "wb") as f:
             downloader = MediaIoBaseDownload(f, request)
             done = False
@@ -347,7 +369,7 @@ class GDrive:
                 fileId=file["id"],
                 mimeType=desired_mimetype,
             )
-            self.write_request_to_file(request, f"{new_file_path}.docx")
+            self.write_request_to_file(file["id"], request, f"{new_file_path}.docx")
         except Exception:
             export_link = file["exportLinks"][desired_mimetype]
             self.download_via_export_link(export_link, f"{new_file_path}.docx")
@@ -364,7 +386,7 @@ class GDrive:
                 fileId=file["id"],
                 mimeType=desired_mimetype,
             )
-            self.write_request_to_file(request, f"{new_file_path}.xlsx")
+            self.write_request_to_file(file["id"], request, f"{new_file_path}.xlsx")
         except Exception:
             export_link = file["exportLinks"][desired_mimetype]
             self.download_via_export_link(export_link, f"{new_file_path}.xlsx")
@@ -381,7 +403,7 @@ class GDrive:
                 fileId=file["id"],
                 mimeType=desired_mimetype,
             )
-            self.write_request_to_file(request, f"{new_file_path}.pptx")
+            self.write_request_to_file(file["id"], request, f"{new_file_path}.pptx")
         except Exception:
             export_link = file["exportLinks"][desired_mimetype]
             self.download_via_export_link(export_link, f"{new_file_path}.pptx")
@@ -396,7 +418,7 @@ class GDrive:
                 fileId=file["id"],
                 mimeType=desired_mimetype,
             )
-            self.write_request_to_file(request, f"{new_file_path}.pdf")
+            self.write_request_to_file(file["id"], request, f"{new_file_path}.pdf")
         except Exception:
             export_link = file["exportLinks"][desired_mimetype]
             self.download_via_export_link(export_link, f"{new_file_path}.pdf")
@@ -411,7 +433,7 @@ class GDrive:
                 fileId=file["id"],
                 mimeType=desired_mimetype,
             )
-            self.write_request_to_file(request, f"{new_file_path}.json")
+            self.write_request_to_file(file["id"], request, f"{new_file_path}.json")
         except Exception:
             export_link = file["exportLinks"][desired_mimetype]
             self.download_via_export_link(export_link, f"{new_file_path}.json")
@@ -426,7 +448,7 @@ class GDrive:
                 fileId=file["id"],
                 mimeType=desired_mimetype,
             )
-            self.write_request_to_file(request, f"{new_file_path}.zip")
+            self.write_request_to_file(file["id"], request, f"{new_file_path}.zip")
         except Exception:
             export_link = file["exportLinks"][desired_mimetype]
             self.download_via_export_link(export_link, f"{new_file_path}.zip")

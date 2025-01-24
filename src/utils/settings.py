@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     S3_ACCESS_KEY: str | None = Field(None, env="S3_ACCESS_KEY")
     S3_SECRET_KEY: str | None = Field(None, env="S3_SECRET_KEY")
     AUTO_CLEANUP: bool = Field(False, env="AUTO_CLEANUP")
+    INCLUDE_SHARED_WITH_ME: bool = Field(True, env="INCLUDE_SHARED_WITH_ME")
 
     @field_validator(
         "MAX_DOWNLOAD_THREADS", "MAX_DRIVE_PROCESSES", "COMPRESSION_PROCESSES"
