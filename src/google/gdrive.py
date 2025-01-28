@@ -40,22 +40,48 @@ class GDrive:
         self.credentials = credentials
         self.drive_type = drive_type
         self.include_shared_with_me = include_shared_with_me
-        self.files = []
+        self._files = {}
         self._files_fetched = False
-        self._file_export_handlers = {
-            "application/vnd.google-apps.shortcut": self._handle_shortcut_export,
-            "application/vnd.google-apps.document": self._handle_document_export,
-            "application/vnd.google-apps.spreadsheet": self._handle_spreadsheet_export,
-            "application/vnd.google-apps.presentation": self._handle_presentation_export,
-            "application/vnd.google-apps.drawing": self._handle_drawing_export,
-            "application/vnd.google-apps.script": self._handle_script_export,
-            "application/vnd.google-apps.form": self._handle_zip_export,
-        }
+        self._file_export_handlers = None
         self.jit_s3_upload = jit_s3_upload
         self.s3_role_based_access = s3_role_based_access
         self.s3_bucket_name = s3_bucket_name
         self.s3_access_key = s3_access_key
         self.s3_secret_key = s3_secret_key
+        self._lock = None
+        self._locked_files = None
+
+    @property
+    def files(self):
+        if self._files is None:
+            self._files = {}
+        return self._files
+
+    @property
+    def locked_files(self):
+        if self._locked_files is None:
+            self._locked_files = set()
+        return self._locked_files
+
+    @property
+    def file_export_handlers(self):
+        if self._file_export_handlers is None:
+            self._file_export_handlers = {
+                "application/vnd.google-apps.shortcut": self._handle_shortcut_export,
+                "application/vnd.google-apps.document": self._handle_document_export,
+                "application/vnd.google-apps.spreadsheet": self._handle_spreadsheet_export,
+                "application/vnd.google-apps.presentation": self._handle_presentation_export,
+                "application/vnd.google-apps.drawing": self._handle_drawing_export,
+                "application/vnd.google-apps.script": self._handle_script_export,
+                "application/vnd.google-apps.form": self._handle_zip_export,
+            }
+        return self._file_export_handlers
+
+    @property
+    def lock(self):
+        if self._lock is None:
+            self._lock = threading.Lock()
+        return self._lock
 
     def __repr__(self) -> str:
         return f"GDrive({self.drive_id}, {self.drive_type})"
@@ -136,9 +162,9 @@ class GDrive:
 
         self._files_fetched = True
 
-        for i, f in enumerate(self.files):
-            f["path"] = self.build_file_path(f["id"])
-            self.files[i] = f
+        # Update paths after collecting all files
+        for file_id, file in self.files.items():
+            file["path"] = self.build_file_path(file_id)
 
     def _fetch_file_list_user_drive(
         self, drive_service: DriveService, page_size: int
@@ -157,7 +183,8 @@ class GDrive:
             )
         while request is not None:
             response = request.execute()
-            self.files.extend(response.get("files", []))
+            for file in response.get("files", []):
+                self.files[file["id"]] = file
             request = drive_service.files().list_next(request, response)
 
     def _fetch_file_list_shared_drive(
@@ -174,35 +201,33 @@ class GDrive:
         )
         while request is not None:
             response = request.execute()
-            self.files.extend(response.get("files", []))
+            for file in response.get("files", []):
+                self.files[file["id"]] = file
             request = drive_service.files().list_next(request, response)
-        for f in self.files:
-            f["permissions"] = []
-            if "permissionIds" in f:
-                for permission_id in f["permissionIds"]:
+        for file in self.files.values():
+            file["permissions"] = []
+            if "permissionIds" in file:
+                for permission_id in file["permissionIds"]:
                     if permission_id in known_permissions:
-                        f["permissions"].append(known_permissions[permission_id])
+                        file["permissions"].append(known_permissions[permission_id])
                     else:
                         permission = (
                             drive_service.permissions()
                             .get(
-                                fileId=f["id"],
+                                fileId=file["id"],
                                 permissionId=permission_id,
                                 fields="id, displayName, type, kind, emailAddress, role",
                                 supportsAllDrives=True,
                             )
                             .execute()
                         )
-                        f["permissions"].append(permission)
+                        file["permissions"].append(permission)
                         known_permissions[permission_id] = permission
 
     def find_file_by_id(self, file_id: str) -> Optional[GFile]:
         if not self._files_fetched:
             self.fetch_file_list()
-        for f in self.files:
-            if f["id"] == file_id:
-                return f
-        return
+        return self.files.get(file_id)
 
     def build_file_path(self, file_id: str) -> Optional[str]:
         f = self.find_file_by_id(file_id)
@@ -232,7 +257,7 @@ class GDrive:
             return
         with ThreadPoolExecutor(max_workers=threads) as executor:
             futures = []
-            for f in self.files:
+            for f in self.files.values():
                 futures.append(executor.submit(self.download_file, f, base_path))
             for future in as_completed(futures):
                 future.result()
@@ -302,8 +327,8 @@ class GDrive:
             new_file_path = f"{base_path}/{file['name']}"
         else:
             new_file_path = f"{base_path}/{file['path']}/{file['name']}"
-        self.write_request_to_file(file["id"], request, new_file_path)
-        return new_file_path
+        saved_file_path = self.write_request_to_file(file["id"], request, new_file_path)
+        return saved_file_path
 
     def export_file(self, file: GFile, base_path: str) -> str:
         if file["mimeType"] == "application/vnd.google-apps.folder":
@@ -315,7 +340,7 @@ class GDrive:
         else:
             new_file_path = f"{base_path}/{file['path']}/{file['name']}"
 
-        export_handler = self._file_export_handlers.get(file["mimeType"], None)
+        export_handler = self.file_export_handlers.get(file["mimeType"], None)
         if export_handler is not None:
             saved_file_path = export_handler(file, drive_service, new_file_path)
         else:
@@ -326,25 +351,58 @@ class GDrive:
                 return None
         return saved_file_path
 
+    def _get_available_path_and_lock_it(self, fileId: str, file_path: str) -> str:
+        base_path = os.path.dirname(file_path)
+        basename = os.path.basename(file_path)
+        name, ext = os.path.splitext(basename)
+        path_format = os.path.join(base_path, f"{name}_%s{ext}")
+
+        # Try original name first
+        new_path = os.path.join(base_path, basename)
+
+        counter = 1
+        while True:
+            with self.lock:
+                if new_path not in self.locked_files and not os.path.exists(new_path):
+                    self.locked_files.add(new_path)
+                    logger.trace(f"Locked new path: {new_path}")
+                    return new_path
+
+            new_path = path_format % f"{fileId[:5]}_{counter}"
+            counter += 1
+
+    def _unlock_file_path(self, file_path: str) -> None:
+        with self.lock:
+            self.locked_files.remove(file_path)
+            logger.trace(f"Unlocked path: {file_path}")
+
+    def download_via_export_link(
+        self, fileId: str, export_link: str, new_file_path: str
+    ) -> str:
+        auth_session = self._get_auth_session()
+        os.makedirs(os.path.dirname(new_file_path), exist_ok=True)
+        new_file_path = self._get_available_path_and_lock_it(fileId, new_file_path)
+        with open(new_file_path, "wb") as f:
+            response = auth_session.get(export_link, stream=True)
+            for chunk in response.iter_content(chunk_size=104857600):  # 100MB
+                if chunk:
+                    f.write(chunk)
+        return new_file_path
+
     def write_request_to_file(self, fileId: str, request: Any, file_path: str) -> None:
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
-        file_already_exists = os.path.exists(file_path)
-        if file_already_exists:
-            file_name = file_path.split("/")[-1]
-            short_file_id = fileId[:5]
-            if "." in file_name:
-                file_name, file_extension = file_name.rsplit(".", 1)
-                file_name = f"{file_name}_{short_file_id}.{file_extension}"
-            else:
-                file_name = f"{file_name}_{short_file_id}"
-            file_path = os.path.join(os.path.dirname(file_path), file_name)
+        logger.debug(f"Downloading file: {file_path}")
+
+        file_path = self._get_available_path_and_lock_it(fileId, file_path)
 
         with open(file_path, "wb") as f:
             downloader = MediaIoBaseDownload(f, request)
             done = False
             while not done:
                 _, done = downloader.next_chunk()
+
+        return file_path
 
     def _handle_shortcut_export(
         self, file: GFile, drive_service: DriveService, new_file_path: str
@@ -369,11 +427,15 @@ class GDrive:
                 fileId=file["id"],
                 mimeType=desired_mimetype,
             )
-            self.write_request_to_file(file["id"], request, f"{new_file_path}.docx")
+            saved_file_path = self.write_request_to_file(
+                file["id"], request, f"{new_file_path}.docx"
+            )
         except Exception:
             export_link = file["exportLinks"][desired_mimetype]
-            self.download_via_export_link(export_link, f"{new_file_path}.docx")
-        return f"{new_file_path}.docx"
+            saved_file_path = self.download_via_export_link(
+                file["id"], export_link, f"{new_file_path}.docx"
+            )
+        return saved_file_path
 
     def _handle_spreadsheet_export(
         self, file: GFile, drive_service: DriveService, new_file_path: str
@@ -386,11 +448,15 @@ class GDrive:
                 fileId=file["id"],
                 mimeType=desired_mimetype,
             )
-            self.write_request_to_file(file["id"], request, f"{new_file_path}.xlsx")
+            saved_file_path = self.write_request_to_file(
+                file["id"], request, f"{new_file_path}.xlsx"
+            )
         except Exception:
             export_link = file["exportLinks"][desired_mimetype]
-            self.download_via_export_link(export_link, f"{new_file_path}.xlsx")
-        return f"{new_file_path}.xlsx"
+            saved_file_path = self.download_via_export_link(
+                file["id"], export_link, f"{new_file_path}.xlsx"
+            )
+        return saved_file_path
 
     def _handle_presentation_export(
         self, file: GFile, drive_service: DriveService, new_file_path: str
@@ -403,11 +469,15 @@ class GDrive:
                 fileId=file["id"],
                 mimeType=desired_mimetype,
             )
-            self.write_request_to_file(file["id"], request, f"{new_file_path}.pptx")
+            saved_file_path = self.write_request_to_file(
+                file["id"], request, f"{new_file_path}.pptx"
+            )
         except Exception:
             export_link = file["exportLinks"][desired_mimetype]
-            self.download_via_export_link(export_link, f"{new_file_path}.pptx")
-        return f"{new_file_path}.pptx"
+            saved_file_path = self.download_via_export_link(
+                file["id"], export_link, f"{new_file_path}.pptx"
+            )
+        return saved_file_path
 
     def _handle_drawing_export(
         self, file: GFile, drive_service: DriveService, new_file_path: str
@@ -418,11 +488,15 @@ class GDrive:
                 fileId=file["id"],
                 mimeType=desired_mimetype,
             )
-            self.write_request_to_file(file["id"], request, f"{new_file_path}.pdf")
+            saved_file_path = self.write_request_to_file(
+                file["id"], request, f"{new_file_path}.pdf"
+            )
         except Exception:
             export_link = file["exportLinks"][desired_mimetype]
-            self.download_via_export_link(export_link, f"{new_file_path}.pdf")
-        return f"{new_file_path}.pdf"
+            saved_file_path = self.download_via_export_link(
+                file["id"], export_link, f"{new_file_path}.pdf"
+            )
+        return saved_file_path
 
     def _handle_script_export(
         self, file: GFile, drive_service: DriveService, new_file_path: str
@@ -433,11 +507,15 @@ class GDrive:
                 fileId=file["id"],
                 mimeType=desired_mimetype,
             )
-            self.write_request_to_file(file["id"], request, f"{new_file_path}.json")
+            saved_file_path = self.write_request_to_file(
+                file["id"], request, f"{new_file_path}.json"
+            )
         except Exception:
             export_link = file["exportLinks"][desired_mimetype]
-            self.download_via_export_link(export_link, f"{new_file_path}.json")
-        return f"{new_file_path}.json"
+            saved_file_path = self.download_via_export_link(
+                file["id"], export_link, f"{new_file_path}.json"
+            )
+        return saved_file_path
 
     def _handle_zip_export(
         self, file: GFile, drive_service: DriveService, new_file_path: str
@@ -448,17 +526,12 @@ class GDrive:
                 fileId=file["id"],
                 mimeType=desired_mimetype,
             )
-            self.write_request_to_file(file["id"], request, f"{new_file_path}.zip")
+            saved_file_path = self.write_request_to_file(
+                file["id"], request, f"{new_file_path}.zip"
+            )
         except Exception:
             export_link = file["exportLinks"][desired_mimetype]
-            self.download_via_export_link(export_link, f"{new_file_path}.zip")
-        return f"{new_file_path}.zip"
-
-    def download_via_export_link(self, export_link: str, new_file_path: str) -> str:
-        auth_session = self._get_auth_session()
-        os.makedirs(os.path.dirname(new_file_path), exist_ok=True)
-        with open(new_file_path, "wb") as f:
-            response = auth_session.get(export_link, stream=True)
-            for chunk in response.iter_content(chunk_size=104857600):  # 100MB
-                if chunk:
-                    f.write(chunk)
+            saved_file_path = self.download_via_export_link(
+                file["id"], export_link, f"{new_file_path}.zip"
+            )
+        return saved_file_path
