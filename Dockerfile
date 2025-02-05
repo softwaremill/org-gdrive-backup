@@ -1,4 +1,6 @@
 FROM python:3.13.0-slim
+RUN pip3 install botocore
+
 COPY --from=ghcr.io/astral-sh/uv:0.5 /uv /bin/
 WORKDIR /app
 
@@ -7,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     pigz \
     pv \
     lz4 \
+    zstd \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml pyproject.toml

@@ -1,5 +1,6 @@
 import os.path
 import random
+import shutil
 import time
 import threading
 from multiprocessing import Pool
@@ -18,7 +19,6 @@ from src.enums import STATE
 SETTINGS = Settings()
 SCOPES = [
     "https://www.googleapis.com/auth/admin.directory.user.readonly",
-    "https://www.googleapis.com/auth/drive.metadata.readonly",
     "https://www.googleapis.com/auth/drive.readonly",
 ]
 
@@ -57,19 +57,29 @@ def compress_files_from_drive(drive_id: str, files_path: str) -> None:
     )
 
 
-def upload_files_to_s3(drive_id: str, downloads_path: str, timestamp: str) -> None:
-    s3 = S3(SETTINGS.S3_BUCKET_NAME, SETTINGS.S3_ACCESS_KEY, SETTINGS.S3_SECRET_KEY)
+def upload_files_to_s3(
+    drive_id: str,
+    downloads_path: str,
+    timestamp: str,
+    delete_after_upload: bool = False,
+) -> None:
+    if SETTINGS.S3_ROLE_BASED_ACCESS:
+        s3 = S3(SETTINGS.S3_BUCKET_NAME, None, None, role_based=True)
+    else:
+        s3 = S3(SETTINGS.S3_BUCKET_NAME, SETTINGS.S3_ACCESS_KEY, SETTINGS.S3_SECRET_KEY)
     logger.info(f"({drive_id}) Uploading files to S3")
     upload_time_start = time.time()
     upload_size = s3.upload_folder(downloads_path, f"{timestamp}/{drive_id}")
     upload_size_mb = upload_size / 1024 / 1024
     upload_speed_mb = upload_size_mb / (time.time() - upload_time_start)
+    if delete_after_upload:
+        shutil.rmtree(downloads_path)
     logger.info(
         f"({drive_id}) Files uploaded in {time.time() - upload_time_start:.2f}s ({upload_size_mb:.2f}MB, {upload_speed_mb:.2f}MB/s)"
     )
 
 
-def process_drive(args: Tuple[GDrive, str]) -> None:
+def process_drive(args: Tuple[GDrive, str]) -> bool:
     current_task = STATE.STARTING
     drive, current_timestamp = args
     start_time = time.time()
@@ -77,6 +87,9 @@ def process_drive(args: Tuple[GDrive, str]) -> None:
     downloads_path = f"downloads/{current_timestamp}/{drive_id}"
     metadata_path = f"{downloads_path}/files.json"
     files_path = f"{downloads_path}/files"
+
+    stop_event = threading.Event()
+    status_thread = None
 
     def print_status():
         counter = 0
@@ -88,14 +101,16 @@ def process_drive(args: Tuple[GDrive, str]) -> None:
                     f"({drive_id}) Current status: {current_task.value}. Files found: {len(drive.files)}. Time elapsed: {time.time() - start_time:.2f}s"
                 )
 
-    stop_event = threading.Event()
-    status_thread = threading.Thread(target=print_status, daemon=True)
-    status_thread.start()
-
     try:
-        logger.info(f"({drive_id}) Processing drive")
+        status_thread = threading.Thread(target=print_status, daemon=True)
+        status_thread.start()
 
-        current_task = STATE.DOWNLOADING
+        logger.info(f"({drive_id}) Started processing drive")
+
+        if SETTINGS.JIT_S3_UPLOAD:
+            current_task = STATE.DOWNLOADING_AND_JIT_UPLOADING
+        else:
+            current_task = STATE.DOWNLOADING
         download_files_from_drive(drive, metadata_path, files_path)
 
         file_count = len(drive.files)
@@ -110,27 +125,35 @@ def process_drive(args: Tuple[GDrive, str]) -> None:
 
         if file_count > 0:
             current_task = STATE.UPLOADING
-            upload_files_to_s3(drive_id, downloads_path, current_timestamp)
+            upload_files_to_s3(
+                drive_id,
+                downloads_path,
+                current_timestamp,
+                delete_after_upload=SETTINGS.AUTO_CLEANUP,
+            )
         else:
             logger.warning(f"({drive_id}) No files found, skipping upload")
 
         current_task = STATE.DONE
         logger.info(
-            f"({drive_id}) Drive processed in {time.time() - start_time:.2f}s ({len(drive.files)} files)"
+            f"({drive_id}) Drive processed in {time.time() - start_time:.2f}s - ({len(drive.files)} files)"
         )
+        return True
 
     except Exception as e:
         logger.error(f"({drive_id}) Error processing drive: {e}")
         os.makedirs(f"{downloads_path}", exist_ok=True)
         with open(f"{downloads_path}/errors.txt", "a") as f:
             f.write(f"Error processing drive: {e}\n")
-        exit(1)
+        return False
     finally:
         stop_event.set()
-        status_thread.join()
+        if status_thread and status_thread.is_alive():
+            status_thread.join(timeout=1.0)
 
 
 def main():
+    start_time = time.time()
     admin_credentials = get_credentials(SETTINGS.DELEGATED_ADMIN_EMAIL)
     gadmin = GAdmin(SETTINGS.WORKSPACE_CUSTOMER_ID, admin_credentials)
 
@@ -141,18 +164,48 @@ def main():
 
     drives = []
     for drive_name in users:
-        drives.append(GDrive(drive_name, get_credentials(drive_name), DRIVE_TYPE.USER))
+        drives.append(
+            GDrive(
+                drive_name,
+                get_credentials(drive_name),
+                DRIVE_TYPE.USER,
+                SETTINGS.INCLUDE_SHARED_WITH_ME,
+                SETTINGS.JIT_S3_UPLOAD,
+                SETTINGS.S3_ROLE_BASED_ACCESS,
+                SETTINGS.S3_BUCKET_NAME,
+                SETTINGS.S3_ACCESS_KEY,
+                SETTINGS.S3_SECRET_KEY,
+            )
+        )
     for drive_name in shared_drives:
-        drives.append(GDrive(drive_name, admin_credentials, DRIVE_TYPE.SHARED))
+        drives.append(
+            GDrive(
+                drive_name,
+                admin_credentials,
+                DRIVE_TYPE.SHARED,
+                SETTINGS.INCLUDE_SHARED_WITH_ME,
+                SETTINGS.JIT_S3_UPLOAD,
+                SETTINGS.S3_ROLE_BASED_ACCESS,
+                SETTINGS.S3_BUCKET_NAME,
+                SETTINGS.S3_ACCESS_KEY,
+                SETTINGS.S3_SECRET_KEY,
+            )
+        )
 
-    logger.debug(f"Whiltelist: {SETTINGS.DRIVE_WHITELIST}")
     logger.debug(f"Drives initialized: {drives}")
+    logger.info(f"Whitelist: {SETTINGS.DRIVE_WHITELIST}")
+    logger.info(f"Blacklist: {SETTINGS.DRIVE_BLACKLIST}")
 
     if len(SETTINGS.DRIVE_WHITELIST) == 0:
         logger.warning("No whitelist specified, processing all drives")
     else:
         drives = [
             drive for drive in drives if drive.drive_id in SETTINGS.DRIVE_WHITELIST
+        ]
+
+    if len(SETTINGS.DRIVE_BLACKLIST) > 0:
+        drives = [
+            drive for drive in drives if drive.drive_id not in SETTINGS.DRIVE_BLACKLIST
         ]
 
     logger.info(f"Drives to process: {drives}")
@@ -165,9 +218,51 @@ def main():
         current_timestamp = time.strftime("%Y%m%d-%H%M%S")
         logger.debug(f"Current timestamp: {current_timestamp}")
 
-        args: Tuple[GDrive, str] = [(drive, current_timestamp) for drive in drives]
-        for _ in pool.imap_unordered(process_drive, args):
-            pass
+        remaining_drives = [(drive, current_timestamp) for drive in drives]
+        processed_drives = set()
+        failed_drives = set()
+        running_processes = []
+
+        # Initial process spawning
+        while (
+            len(running_processes) < SETTINGS.MAX_DRIVE_PROCESSES and remaining_drives
+        ):
+            drive_args = remaining_drives.pop(0)
+            result = pool.apply_async(process_drive, (drive_args,))
+            running_processes.append((drive_args, result))
+            logger.info(f"Started processing drive {drive_args[0].drive_id}")
+
+        # Main processing loop
+        while running_processes or remaining_drives:
+            # Check for completed processes
+            for drive_args, result in running_processes[:]:
+                if result.ready():
+                    drive = drive_args[0]
+                    success = result.get()
+                    if success:
+                        processed_drives.add(drive.drive_id)
+                    else:
+                        failed_drives.add(drive.drive_id)
+
+                    running_processes.remove((drive_args, result))
+
+                    # Spawn new process if there are remaining drives
+                    if remaining_drives:
+                        new_drive_args = remaining_drives.pop(0)
+                        new_result = pool.apply_async(process_drive, (new_drive_args,))
+                        running_processes.append((new_drive_args, new_result))
+
+            time.sleep(1)  # Short sleep to prevent CPU spinning
+
+        total_time = time.time() - start_time
+        logger.info(f"Backup completed in {total_time:.2f}s")
+        logger.info(
+            f"Successfully processed drives: {len(processed_drives)}/{len(drives)}"
+        )
+        logger.debug(f"Successfully processed drives: {processed_drives}")
+        if len(processed_drives) < len(drives):
+            logger.warning("Some drives were not processed successfully!")
+            logger.warning(f"Failed drives: {failed_drives}")
 
 
 if __name__ == "__main__":

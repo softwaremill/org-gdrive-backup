@@ -35,6 +35,15 @@ class TestCompressor(unittest.TestCase):
         self.assertLess(tar_size, original_size)
         os.remove(tar_path)
 
+    def test_compress_folder_pzstd(self):
+        compressor = Compressor(algorithm="pzstd", max_processes=2)
+        tar_path, tar_size = compressor.compress_folder(self.files_dir)
+        self.assertTrue(os.path.exists(tar_path))
+        self.assertGreater(tar_size, 0)
+        original_size = os.path.getsize(self.file_path)
+        self.assertLess(tar_size, original_size)
+        os.remove(tar_path)
+
     def test_compress_folder_delete_original(self):
         compressor = Compressor(algorithm="lz4")
         tar_path, tar_size = compressor.compress_folder(

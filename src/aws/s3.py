@@ -1,15 +1,25 @@
 import os
 import boto3
+from tenacity import retry, stop_after_attempt, wait_exponential
 from src.utils.logger import app_logger as logger
 from src.enums import STORAGE_CLASS
 
 
 class S3:
-    def __init__(self, bucket_name: str, access_key: str, secret_key: str) -> None:
+    def __init__(
+        self,
+        bucket_name: str,
+        access_key: str,
+        secret_key: str,
+        role_based: bool = False,
+    ) -> None:
         self.bucket_name = bucket_name
-        self.s3 = boto3.client(
-            "s3", aws_access_key_id=access_key, aws_secret_access_key=secret_key
-        )
+        if role_based:
+            self.s3 = boto3.client("s3")
+        else:
+            self.s3 = boto3.client(
+                "s3", aws_access_key_id=access_key, aws_secret_access_key=secret_key
+            )
 
     def upload_folder(
         self,
@@ -41,6 +51,11 @@ class S3:
 
         return file_size_counter
 
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=1, min=2, max=5),
+        reraise=True,
+    )
     def upload_file(
         self,
         source_path: str,
