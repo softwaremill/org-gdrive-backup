@@ -44,7 +44,7 @@ class Settings(BaseSettings):
     S3_ROLE_BASED_ACCESS: bool = Field(False, env="S3_ROLE_BASED_ACCESS")
     S3_ACCESS_KEY: str | None = Field(None, env="S3_ACCESS_KEY")
     S3_SECRET_KEY: str | None = Field(None, env="S3_SECRET_KEY")
-    AUTO_CLEANUP: bool = Field(False, env="AUTO_CLEANUP")
+    AUTO_CLEANUP: bool = Field(True, env="AUTO_CLEANUP")
     INCLUDE_SHARED_WITH_ME: bool = Field(True, env="INCLUDE_SHARED_WITH_ME")
 
     @field_validator(
