@@ -6,7 +6,7 @@ This project is a simple Python script that backs up all Google Drives in a Goog
 
 - Backups all Google Drives in a Google Workspace domain (personal and shared drives) to S3
 - Converts Google Apps files (Docs, Sheets, Slides) to Microsoft Office format
-- Saves metadata about the files to a JSON file (id, name, md5Checksum, path, permissions)
+- Saves metadata about the files to a JSON file (`files.json`) (id, name, md5Checksum, path, permissions)
 - Handles duplicate files (same name, path) by appending file ID to the name
 - Links are converted to .txt files with path to the original file
 - Whitelist & blacklist of drives
